@@ -2,6 +2,7 @@ import abc
 from typing import List
 
 import mesh_tensorflow as mtf
+import tensorflow as tf
 from pydantic.dataclasses import dataclass
 
 from . import base, nn

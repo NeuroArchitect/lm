@@ -1,4 +1,5 @@
 import mesh_tensorflow as mtf
+import tensorflow as tf
 
 
 def create_initializer(initializer_range=0.02):

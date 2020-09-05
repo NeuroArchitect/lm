@@ -34,9 +34,7 @@ def load_tokenizer(location):
     if tf.io.gfile.exists(os.path.join(location, "merges.txt")):
         # use tf gfile in case the dictionary is remote
         fastok = GPT2TokenizerFast.from_pretrained(location)
-        fastok.add_special_tokens(
-            {"eos_token": "[EOS]", "pad_token": "[PAD]", "unk_token": "[UNK]"}
-        )
+        fastok.add_special_tokens({"eos_token": "<[endoftext]>"})
     else:
         if location.startswith("/"):
             raise ValueError("invalid location %s" % location)

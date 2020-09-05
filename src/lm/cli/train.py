@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+from contextlib import ContextDecorator, ExitStack
 from typing import Dict
 
 import tensorflow as tf
@@ -167,9 +168,6 @@ def check_dataset(trainer, args):
                 )
 
 
-from contextlib import ContextDecorator, ExitStack
-
-
 class TrainerCPUConfig:
     pass
 
@@ -200,9 +198,7 @@ class TrainerCPU(ContextDecorator):
                     yield result
 
     def add_model(self, inputs):
-        model_factory = model_factory_registry[self.config.model_name].from_config(
-            self.config.model_config
-        )
+        model_factory = lm[self.config.model_name].from_config(self.config.model_config)
         model_graph = model_factory(inputs, params={})
         return model_graph
 

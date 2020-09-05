@@ -7,10 +7,8 @@ from absl.flags import argparse_flags
 
 import lm.config
 import lm.encoders
-
-PreProcessedTextLine = collections.namedtuple(
-    "PreProcessedTextLine", ["id", "content", "target", "offset_start", "offset_end"]
-)
+import lm.examples
+import lm.human
 
 
 def parse_args(argv):
@@ -72,7 +70,7 @@ def main(args):
     encfg = lm.config.load(args.encoder)
     tokenizer = lm.encoders.from_config(encfg)
     with tf.Session() as sess:
-        files = tf.io.gfile.glob(args.input)
+        files = lm.human.filepaths_from_user_input(args.input)
         if len(files) == 0:
             logging.error("no file found at %s", args.input)
             return
@@ -80,7 +78,7 @@ def main(args):
         sampled_files = random.choices(files, k=args.sample_size)
 
         ds = tf.data.Dataset.from_tensor_slices(sampled_files)
-        ds = ds.interleave(tf.data.TFRecordDataset, cycle_length=4)
+        ds = ds.interleave(lm.examples.from_file_list(sampled_files), cycle_length=4)
         ds = ds.map(read_example)
         ds = ds.shuffle(1024)
         ds = ds.take(args.sample_size)
@@ -91,7 +89,7 @@ def main(args):
         while True:
             try:
                 result = sess.run(example)  # , max_id_tf, min_id_tf])
-                pt = PreProcessedTextLine(
+                pt = lm.examples.PreProcessedTextLine(
                     id=result["id"],
                     content=result["content"],
                     target=result["target"],

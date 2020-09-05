@@ -1,5 +1,6 @@
 "Block utils library"
 import mesh_tensorflow as mtf
+import tensorflow as tf
 
 
 @dataclass

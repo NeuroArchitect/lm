@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 
 import tensorflow as tf
 from absl import app, logging
@@ -11,7 +12,6 @@ import lm.infeeds.seq2seq
 import lm.tasks
 import lm.tf
 
-import tempfile
 
 def parse_args(_, parser):
     # Parse command line arguments

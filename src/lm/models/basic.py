@@ -1,5 +1,7 @@
 from pydantic.datasclasses import dataclass
+
 from lm.infeeds import InfeedConfig
+
 
 @dataclass
 class ModelConfig:

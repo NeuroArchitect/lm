@@ -25,7 +25,7 @@ class MultiHeadAttentionBuilder:
     def __init__(self, config: MultiHeadAttentionConfig):
         self.config = config
 
-    def add_random_uniform(self):
+    def add_random_uniform(self, shape):
         return mtf.random_uniform_initializer(shape=shape)
 
     def add_var(self, name, *shape):

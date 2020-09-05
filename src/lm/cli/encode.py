@@ -4,39 +4,13 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 import tensorflow as tf
-from absl import app, logging
-from absl.flags import argparse_flags
+from absl import app, flags, logging
 from tqdm import auto as tqdm
 
 import lm.config
 import lm.encoders
 import lm.examples
-
-args = None
-
-
-def readlines_txt(src):
-    with open(src) as fd:
-        if not args.by_line:
-            return [fd.read()]
-        else:
-            return fd.readlines()
-
-
-LINE_READER = {
-    ".txt": readlines_txt,
-    ".tsv": readlines_txt,
-}
-
-
-def readlines(src):
-    _, ext = os.path.splitext(src)
-    f = LINE_READER.get(ext, None)
-    if f is None:
-        logging.warning("no readlines for file %s", src)
-        return
-    return f(src)
-
+import lm.human
 
 # Helper functions and classes
 def sizechunks(l, n):
@@ -55,48 +29,26 @@ def sizechunks(l, n):
     return out
 
 
-def parallel(src_dst_list, total):
-    count = args.nproc or cpu_count()
-    pool = Pool(processes=count) if count > 1 else None
-    mapper = pool.imap if count > 1 else map
+def executor(nproc):
+    if nproc == 1:
+        return map
+    if nproc == 0:
+        nproc = cpu_count() - 1
+    pool = Pool(processes=nproc)
+    return pool.imap_unordered
+
+
+def run(nproc, src_dst_list, total):
     token_total = 0
     example_total = 0
+    execute = executor(nproc)
     for token_count, example_count in tqdm.tqdm(
-        mapper(lm.examples.transform_many_and_write_one_tfrecord, src_dst_list),
+        execute(lm.examples.transform_many_and_write_one_tfrecord, src_dst_list),
         total=total,
     ):
         token_total += token_count
         example_total += example_count
     return token_total, example_total
-
-
-def listfiles(location):
-    location = location.strip()
-    # check if is an index file
-    txt_files = []
-    if tf.io.gfile.exists(location):
-        if not tf.io.gfile.isdir(location):
-            with tf.io.gfile.GFile(location) as fd:
-                for l in fd.readlines():
-                    if tf.io.gfile.exists(l):
-                        txt_files.append(l)
-    if txt_files:
-        return txt_files
-
-    txt_files = list(p for p in tf.io.gfile.glob(location) if not tf.io.gfile.isdir(p))
-
-    # try with general glob
-    if not txt_files:
-        txt_files = list(tf.io.gfile.glob(os.path.join(location, "*")))
-
-    if not txt_files:
-        # is the input a list of files?
-        txt_files = location.split(" ")
-        txt_files = list(p for p in txt_files if tf.io.gfile.exists(p))
-
-    # filter directories
-    txt_files = list(p for p in txt_files if not tf.io.gfile.isdir(p))
-    return txt_files
 
 
 def parse_args(args, parser):
@@ -112,8 +64,8 @@ def parse_args(args, parser):
     parser.add_argument(
         "--size",
         type=float,
-        default=50.0,
-        help="the size in MB of uncompressed text to add to each tfrecord file, default 50MiB",
+        default=300.0,
+        help="the size in MB of uncompressed text to add to each tfrecord file, default 300MB",
     )
     parser.add_argument(
         "--name", type=str, default="dataset", help="prefix name for the output files."
@@ -121,9 +73,23 @@ def parse_args(args, parser):
     parser.add_argument(
         "--encoder", type=str, default="gpt2", help="Name or path of an encoder spec"
     )
+
     parser.add_argument(
-        "--by_line", action="store_true", help="encodes each line as a separate record"
+        "--by",
+        default="file",
+        type=str.lower,
+        choices=["file", "passage", "line"],
+        help="how to encode the inputs: file: each file is a record. passage: each file is splitted in passages, each passage is a record. line: is an example.",
     )
+
+    parser.add_argument(
+        "--compress",
+        default="lz",
+        type=str.lower,
+        choices=["none", "gz", "gzip", "lz", "zlib"],
+        help="compression to use for the records. the suffix will be added to the final files",
+    )
+
     parser.add_argument(
         "--nproc",
         type=int,
@@ -153,18 +119,16 @@ def num(x, digits_after_decimal=2):
 
 
 def local_parse_args(args):
-    parser = argparse_flags.ArgumentParser()
+    parser = flags.argparse_flags.ArgumentParser()
     parse_args(args, parser)
     return parser.parse_args(args[1:])
 
 
-def main(argv):
-    global args
-    args = argv
+def main(args):
 
-    txt_files = open(args.input).read().splitlines()
+    txt_files = lm.human.filepaths_from_user_input(args.input)
     if not txt_files:
-        logging.error("no data files found with input: %s", args.input)
+        logging.error("no input data files found with input: %s", args.input)
         return
 
     os.makedirs(args.output, exist_ok=True)
@@ -181,29 +145,48 @@ def main(argv):
     )  # Assign files_per file to a tfrecord file each
 
     logging.info(
-        "Got %d files, divided into %d chunks.", len(txt_files), len(file_chunks)
+        "got %d files, divided into %d chunks.", len(txt_files), len(file_chunks)
     )
 
-    def getdst(name, idx, total):
-        return os.path.join(args.output, "%s_%05d_%05d.tfrecord" % (name, idx, total))
+    def getdst(name, idx, compress, total):
+        if compress in ("gzip", "gz"):
+            ext = "tfrecord.gz"
+        elif compress in ("zlib", "lz"):
+            ext = "tfrecord.lz"
+        else:
+            ext = "tfrecord"
 
-    if not len(file_chunks):
+        return os.path.join(args.output, "%s_%05d_%05d.%s" % (name, idx, total, ext))
+
+    if len(file_chunks) == 0:
         logging.error(
-            "cannot split %d into %d chunks", len(file_chunks), len(txt_files)
+            "cannot split %d files into %d chunks", len(txt_files), len(file_chunks)
         )
         exit(-1)
 
+    # check output directory
+    if tf.io.gfile.exists(args.output) and tf.io.gfile.listdir(args.output):
+        logging.error('output directory is not empty. refusing to continue')
+        exit(-1)
+    tf.io.gfile.makedirs(args.output)
+
+    # start process
     jobs = (
-        (encoder, chunks, getdst(args.name, idx, len(file_chunks)), args)
+        (
+            encoder,
+            chunks,
+            getdst(args.name, idx, args.compress, len(file_chunks)),
+            args.by,
+        )
         for idx, chunks in enumerate(file_chunks)
     )
 
     start = time.time()
-    token_total, example_total = parallel(jobs, total=len(file_chunks))
+    token_total, example_total = run(args.nproc, jobs, total=len(file_chunks))
     end = time.time()
     elapsed = end - start
     tokens_per_second = token_total / elapsed
-    tokens_per_record = token_total / len(jobs)
+    tokens_per_record = token_total / len(file_chunks)
 
     logging.info(
         "finished in %ss: tokenized %d of %d files (%s tokens @ %.2f tokens/sec) in %d tfrecords (~%s tokens per record)",
@@ -212,7 +195,7 @@ def main(argv):
         len(txt_files),
         num(token_total),
         tokens_per_second,
-        len(jobs),
+        len(file_chunks),
         num(tokens_per_record),
     )
 

@@ -1,9 +1,10 @@
 from typing import List
 
 import mesh_tensorflow as mtf
-from pydantic.dataclasses import dataclass
 
 from . import nn
+
+# from pydantic.dataclasses import dataclass
 
 
 class MeshGraph:

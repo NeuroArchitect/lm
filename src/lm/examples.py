@@ -1,11 +1,12 @@
 "The only valid example formats accepted by the framework"
-
+import os
 import collections
 
+import farmhash
 import numpy as np
 import tensorflow as tf
 
-import farmhash
+import lm.parsers
 
 CONTENT_KEY = "content"
 TARGET_KEY = "target"
@@ -76,14 +77,37 @@ def create_example(features: PreProcessedTextLine) -> tf.train.Example:
     return tf.train.Example(features=tf.train.Features(feature=feature))
 
 
+def _trec_options(compression):
+    # TODO: do we get some speedups here with better buffer inputs?
+    return tf.io.TFRecordOptions(
+        compression_type=compression,
+        flush_mode=None,
+        input_buffer_size=None,
+        output_buffer_size=None,
+        window_bits=None,
+        compression_level=None,
+        compression_method=None,
+        mem_level=None,
+        compression_strategy=None,
+    )
+
+
 def transform_many_and_write_one_tfrecord(job):
-    tokenizer, sources, dst, args = job
+    tokenizer, sources, dst, parse_strategy = job
     token_count = 0
     example_count = 0
-    with tf.io.TFRecordWriter(dst) as w:
+    *_, ext = os.path.splitext(dst)
+    if ext in (".gz", ".gzip"):
+        options = _trec_options(tf.io.TFRecordCompressionType.GZIP)
+    elif ext in (".lz",):
+        options = _trec_options(tf.io.TFRecordCompressionType.ZLIB)
+    else:
+        options = _trec_options(tf.io.TFRecordCompressionType.NONE)
+
+    with tf.io.TFRecordWriter(dst, options) as w:
         for source in sources:
             for uids, sources, tokens, start_offsets, end_offsets in batch_tokenizer(
-                tokenizer, source, by_line=args.by_line
+                tokenizer, source, strategy=parse_strategy
             ):
                 result = PreProcessedTextLine(
                     uids, sources, tokens, start_offsets, end_offsets
@@ -95,17 +119,11 @@ def transform_many_and_write_one_tfrecord(job):
     return token_count, example_count
 
 
-def batch_tokenizer(tokenizer, txtfile_location, by_line=False):
+def batch_tokenizer(tokenizer, txtfile_location, strategy="file"):
     # just convert to the token ids, we will do adaptative padding on training time.
-    with tf.io.gfile.GFile(txtfile_location, "rb") as f:
-        if by_line:
-            sources = [l.decode("utf-8") for l in f.readlines()]
-        else:
-            sources = [f.read().decode("utf-8")]
-    if len(sources) <= 0:
-        # tokenizer crashes when given an empty list, so give it an empty string
-        # (this happens in --by_line mode for empty files)
-        sources = [""]
+    sources = lm.parsers.parse_url(txtfile_location, strategy=strategy)
+    if len(sources) == 0:
+        return
     uids = [farmhash.fingerprint64(source) for source in sources]
     batches = tokenizer.batch_encode_plus(
         sources,
@@ -117,7 +135,7 @@ def batch_tokenizer(tokenizer, txtfile_location, by_line=False):
         verbose=False,
     )
 
-    return zip(
+    yield from zip(
         uids,
         sources,
         batches["input_ids"],
@@ -176,3 +194,14 @@ def _serialize_seq2seq(self):
 
 
 Seq2SeqSimpleExample.serialize = _serialize_seq2seq
+
+
+def from_file_list(file_list):
+    has_any_gz = any( f.endswith('gz') for f in file_list )
+    has_all_gz = all( f.endswith('gz') for f in file_list )
+    if has_any_gz and not has_all_gz:
+        raise ValueError('invalid mix of gz and non gz records')
+    if has_all_gz:
+        return lambda *args, **kwds: tf.data.TFRecordDataset(*args, **kwds, compression_type='GZIP', buffer_size=None)
+
+    return tf.data.TFRecordDataset

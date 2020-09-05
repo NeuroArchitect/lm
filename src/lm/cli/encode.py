@@ -1,6 +1,5 @@
 import os
 import time
-from glob import glob
 from multiprocessing import Pool, cpu_count
 
 import tensorflow as tf
@@ -67,6 +66,7 @@ def parallel(src_dst_list, total):
 
 
 def listfiles(location):
+    location = location.strip()
     # check if is an index file
     txt_files = []
     if tf.io.gfile.exists(location):
@@ -78,13 +78,19 @@ def listfiles(location):
     if txt_files:
         return txt_files
 
-    txt_files = list(p for p in glob(location) if not os.path.isdir(p))
+    txt_files = list(p for p in tf.io.gfile.glob(location) if not tf.io.gfile.isdir(p))
 
     # try with general glob
     if not txt_files:
-        txt_files = list(glob(os.path.join(location, "*")))
+        txt_files = list(tf.io.gfile.glob(os.path.join(location, "*")))
 
-    txt_files = list(p for p in txt_files if not os.path.isdir(p))
+    if not txt_files:
+        # is the input a list of files?
+        txt_files = location.split(' ')
+        txt_files = list(p for p in txt_files if tf.io.gfile.exists(p))
+
+    # filter directories
+    txt_files = list(p for p in txt_files if not tf.io.gfile.isdir(p))
     return txt_files
 
 
@@ -150,6 +156,10 @@ def main(args):
 
     def getdst(name, idx, total):
         return os.path.join(args.output, "%s_%05d_%05d.tfrecord" % (name, idx, total))
+
+    if not len(file_chunks):
+        logging.error('cannot split %d into %d chunks', len(file_chunks), len(txt_files))
+        exit(-1)
 
     jobs = (
         (encoder, chunks, getdst(args.name, idx, len(file_chunks)))

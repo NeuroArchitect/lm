@@ -82,7 +82,7 @@ def listfiles(location):
 
     # try with general glob
     if not txt_files:
-        txt_files = list(glob(os.path.join(location, "*.*")))
+        txt_files = list(glob(os.path.join(location, "*")))
 
     txt_files = list(p for p in txt_files if not os.path.isdir(p))
     return txt_files
@@ -92,7 +92,7 @@ def parse_args(args, parser):
     parser.add_argument(
         "input",
         type=str,
-        help="Path to where your files are located.",
+        help="path to: 1) a directory, 2) an index file with one file path per line.",
     )
     parser.add_argument(
         "output", type=str, default="output", help="Where to write tfrecords"
@@ -125,7 +125,7 @@ def main(args):
 
     txt_files = listfiles(args.input)
     if not txt_files:
-        logging.error("no data files found")
+        logging.error("no data files found with input: %s", args.input)
         return
 
     os.makedirs(args.output, exist_ok=True)

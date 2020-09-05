@@ -38,7 +38,7 @@ def parse_args(args):
         cmd_parser = subparsers.add_parser(
             name,
             help=cmd.__doc__,
-            # Do not make absl FLAGS available after the subcommand `roll_dice`.
+            # Do not make absl FLAGS available after the subcommand
             inherited_absl_flags=False,
         )
         cmd.parse_args(args, cmd_parser)

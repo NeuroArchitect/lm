@@ -82,9 +82,12 @@ def transform_many_and_write_one_tfrecord(job):
     example_count = 0
     with tf.io.TFRecordWriter(dst) as w:
         for source in sources:
-            print(str(source))
-            for uids, sources, tokens, start_offsets, end_offsets in batch_tokenizer(tokenizer, source, by_line=args.by_line):
-                result = PreProcessedTextLine(uids, sources, tokens, start_offsets, end_offsets)
+            for uids, sources, tokens, start_offsets, end_offsets in batch_tokenizer(
+                tokenizer, source, by_line=args.by_line
+            ):
+                result = PreProcessedTextLine(
+                    uids, sources, tokens, start_offsets, end_offsets
+                )
                 example = create_example(result)
                 w.write(example.SerializeToString())
                 token_count += len(tokens)
@@ -95,14 +98,14 @@ def transform_many_and_write_one_tfrecord(job):
 def batch_tokenizer(tokenizer, txtfile_location, by_line=False):
     # just convert to the token ids, we will do adaptative padding on training time.
     with tf.io.gfile.GFile(txtfile_location, "rb") as f:
-      if by_line:
-        sources = [l.decode("utf-8") for l in f.readlines()]
-      else:
-        sources = [f.read().decode("utf-8")]
+        if by_line:
+            sources = [l.decode("utf-8") for l in f.readlines()]
+        else:
+            sources = [f.read().decode("utf-8")]
     if len(sources) <= 0:
-      # tokenizer crashes when given an empty list, so give it an empty string
-      # (this happens in --by_line mode for empty files)
-      sources = ['']
+        # tokenizer crashes when given an empty list, so give it an empty string
+        # (this happens in --by_line mode for empty files)
+        sources = [""]
     uids = [farmhash.fingerprint64(source) for source in sources]
     batches = tokenizer.batch_encode_plus(
         sources,

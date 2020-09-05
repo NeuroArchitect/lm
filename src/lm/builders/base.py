@@ -1,4 +1,3 @@
-import abc
 from typing import List
 
 import mesh_tensorflow as mtf

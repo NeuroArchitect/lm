@@ -1,10 +1,10 @@
 from pydantic.datasclasses import dataclass
-
+from lm.infeeds import InfeedConfig
 
 @dataclass
 class ModelConfig:
     n_layer: int
-    input_config: InputConfig
+    input_config: InfeedConfig
     transfomer_config: TransformerConfig
 
 

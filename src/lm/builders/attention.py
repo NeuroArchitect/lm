@@ -1,5 +1,6 @@
 "Collection of Attention Layers"
 import mesh_tensorflow as mtf
+import tensorflow as tf
 from pydantic.dataclasses import dataclass
 
 
@@ -14,6 +15,10 @@ class MultiHeadAttentionConfig:
     v_dim: int
     o_dim: int
     dtype: str
+
+
+def create_initializer(shape):
+    return mtf.random_uniform_initializer(shape=shape)
 
 
 class MultiHeadAttentionBuilder:

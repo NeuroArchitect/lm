@@ -63,6 +63,9 @@ class EmbeddingTest(parameterized.TestCase, tf.test.TestCase):
         x = tf.random_normal([batch, seq])
 
         m = base.MeshGraph("test")
-        m.batch_dim = 10
+        m.batch_dim = batch
+        m.sequence_dim = seq
+
+        x = m.import_tf_tensor(x, [m.batch_dim, m.sequence_dim])
 
         self.assertEqual(m.batch_dim, mtf.Dimension(name="batch", size=10))

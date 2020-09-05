@@ -169,11 +169,12 @@ def check_dataset(trainer, args):
 
 from contextlib import ContextDecorator, ExitStack
 
+
 class TrainerCPUConfig:
     pass
 
-class TrainerCPU(ContextDecorator):
 
+class TrainerCPU(ContextDecorator):
     def __init__(self, config: TrainerCPUConfig):
         self.config = config
         self._sess = None
@@ -206,7 +207,7 @@ class TrainerCPU(ContextDecorator):
         return model_graph
 
     def add_input_pipeline(self, dataset):
-        it = tf.data.make_one_shot_iterator(ds)
+        it = tf.data.make_one_shot_iterator(dataset)
         x = it.get_next()
         return x
 

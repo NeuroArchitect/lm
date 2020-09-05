@@ -1,5 +1,6 @@
 "stateless layer functions with minimal configuration"
 import mesh_tensorflow as mtf
+import tensorflow as tf
 
 
 # from mesh_tensorflow bert
@@ -16,7 +17,7 @@ def layer_norm(
 
     Args:
         x: a mtf.Tensor whose shape contains dim.
-        dim: a mtf.Dimension
+        dim: the dim to reduce a mtf.Dimension
         epsilon: a floating point number
         subtract_mean: a boolean
         use_scale: a boolean

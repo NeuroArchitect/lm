@@ -151,7 +151,7 @@ def main(args):
         # num(tokens_per_record),
     )
 
-    logging.info(f'created unique index file {output}, hashvalues {output}.index')
+    logging.info(f'created unique index file {output}, hashvalues {output}.farmhash')
 
 
 if __name__ == "__main__":

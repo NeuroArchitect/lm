@@ -1,7 +1,9 @@
-# lm: The End to End Language Model Pipeline built for training speed
+# lm: The Language Model Pipeline
 
 [![image](https://img.shields.io/pypi/v/lm.svg)](https://pypi.python.org/pypi/lm)
-
+<a href="https://github.com/NeuroArchitect/lm/blob/master/LICENSE">
+    <img alt="GitHub" src="https://img.shields.io/github/license/NeuroArchitect/lm.svg?color=blue">
+</a>
 [![Actions Status](https://github.com/NeuroArchitect/lm/workflows/build/badge.svg)](https://github.com/NeuroArchitect/lm/actions)
 
 
@@ -24,7 +26,7 @@ It uses and supports *ONLY*:
 
 # Useful Commands
 
-## TLDR
+## TLDR;
 
 ```bash
 # install the library and create gpt2 encoded binaries

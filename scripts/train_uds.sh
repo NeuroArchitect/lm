@@ -6,7 +6,10 @@ rm -fr /tmp/tfrecord
 # create unique list of files
 CLEANTXT_INPUT=${PWD}/data/uds
 CLEANTXT_OUTPUT=/tmp/index.txt
-lm hashsort ${CLEANTXT_INPUT} ${CLEANTXT_OUTPUT} --nproc 1
+
+find ${CLEANTXT_INPUT} -type f -exec readlink -f {} \; > /tmp/index.txt
+
+lm hashsort /tmp/index.txt ${CLEANTXT_OUTPUT} --nproc 1
 exit
 
 # clean utf8

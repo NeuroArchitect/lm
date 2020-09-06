@@ -12,6 +12,7 @@ def filepaths_from_user_input(location):
         if not tf.io.gfile.isdir(location):
             with tf.io.gfile.GFile(location) as fd:
                 for l in fd.readlines():
+                    l = l.strip()
                     if tf.io.gfile.exists(l):
                         txt_files.append(l)
     if txt_files:

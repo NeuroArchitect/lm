@@ -41,7 +41,7 @@ requirements = [
     "jsonnet==0.16.0",
     "tensorflow>=1.15.2,<2.0",
     "mesh_tensorflow==0.1.16",
-    "transformers==3.1.0", #@git+https://github.com/Mistobaan/transformers.git@3e8a0b2#egg=transformers-3.0.1",
+    "transformers==3.1.0",  # @git+https://github.com/Mistobaan/transformers.git@3e8a0b2#egg=transformers-3.0.1",
     "tokenizers==0.8.1",
     "ftfy>=5.8,<5.9",
     "pyfarmhash==0.2.2",

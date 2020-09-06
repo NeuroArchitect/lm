@@ -1,6 +1,6 @@
 import base64
-import os
 import cmd
+import os
 import subprocess
 import tempfile
 import time
@@ -17,6 +17,7 @@ import lm.human
 
 # FIXME
 from lm.cli.encode import local_parse_args, num
+
 
 def executor(nproc):
     if nproc == 1:
@@ -37,17 +38,15 @@ def hashfile(job):
                 # there is no relationship here between these two methods
                 # the base64 is a trick to allow to dedup gz/compresed files
                 hashvalue = farmhash.fingerprint64(base64_bytes.decode("ascii"))
-                wf.write("%d\t%s\n" % (hashvalue, src))
+                wf.write("%s\t%d\n" % (src, hashvalue))
     return dst, count
 
 
 def run(nproc, src_dst_list, total):
-    hash_files =[]
+    hash_files = []
     total = 0
     execute = executor(nproc)
-    for hash_file, count in tqdm.tqdm(
-        execute(hashfile, src_dst_list), total=total,
-    ):
+    for hash_file, count in tqdm.tqdm(execute(hashfile, src_dst_list), total=total,):
         hash_files.append(hash_file)
         total += count
     return hash_files, total
@@ -85,13 +84,20 @@ def chunks(l, n):
         out.append(chunk)
     return out
 
+
 def sh(cmdline):
     try:
         result = subprocess.check_output(cmdline, shell=True)
-        logging.debug(result)
+        logging.debug(result.decode("utf8"))
     except subprocess.CalledProcessError as grepexc:
-        logging.error("subprocess %s failed with error code: %r\n\n%r", grepexc.returncode, grepexc.output)
+        logging.error(
+            "subprocess %s failed with error code: %r\n\n%r",
+            cmdline,
+            grepexc.returncode,
+            grepexc.stdout,
+        )
         exit()
+
 
 def main(args):
     logging.info("started evaluation process")
@@ -101,11 +107,11 @@ def main(args):
         return
     for f in txt_files:
         if not os.path.isabs(f):
-            logging.error('file paths must be absolute. %s is not', f)
+            logging.error("file paths must be absolute. %s is not", f)
             exit()
 
     if tf.io.gfile.isdir(args.output):
-        output = os.path.join(args.output, 'index.txt')
+        output = os.path.join(args.output, "index.txt")
     else:
         output = args.output
 
@@ -126,22 +132,40 @@ def main(args):
 
     start = time.time()
     hash_files, count = run(nproc, jobs, total=len(file_chunks))
-    with tempfile.NamedTemporaryFile('wt', delete=True) as index:
+    with tempfile.NamedTemporaryFile("wt", delete=True) as index:
         for s in hash_files:
-            index.write('%s\n' % s)
+            index.write("%s\n" % s)
         index.flush()
-        with tempfile.NamedTemporaryFile('wt', delete=True) as reduce:
+        with tempfile.NamedTemporaryFile("wt", delete=True) as reduce:
             # concatenate all in single txtfile
-            sh('{ xargs cat < %s ; } > %s' % (index.name, reduce.name))
+            sh("{ xargs cat < %s ; } > %s" % (index.name, reduce.name))
             # unique sort using first column
-            sh('sort -u --parallel %d -k1,1 %s > %s.farmhash' % (nproc, reduce.name, output))
-            sh('cut -f2 <%s.farmhash >%s' % (output, output))
+            output_no_ext = os.path.splitext(output)[0]
+            sh(
+                "sort --parallel %d -t'\t' -k2 %s > %s.sorted.farmhash"
+                % (nproc, reduce.name, output_no_ext)
+            )
+            sh(
+                "sort -u --parallel %d -t'\t' -k2 %s > %s.uniq.farmhash"
+                % (nproc, reduce.name, output_no_ext)
+            )
+
+            # finding the duplicates in parallel is tricky
+            # sh(
+            #     "sort -u --parallel %d -t'\t' -k2 %s > %s.uniq.farmhash"
+            #     % (nproc, reduce.name, output_no_ext)
+            # )
+            sh(
+                "cat %s.sorted.farmhash | cut -f 2 | uniq -dc > %s.duplicates.farmhash"
+                % (output_no_ext, output_no_ext)
+            )
+            sh("cut -f1 <%s.uniq.farmhash >%s" % (output_no_ext, output))
 
     end = time.time()
     elapsed = end - start
 
     logging.info(
-        "finished in %ss: farmhashed %d of %d files ", # (%s tokens @ %.2f tokens/sec) in %d tfrecords (~%s tokens per record)",
+        "finished in %ss: farmhashed %d of %d files ",  # (%s tokens @ %.2f tokens/sec) in %d tfrecords (~%s tokens per record)",
         num(elapsed),
         count,
         len(txt_files),
@@ -151,7 +175,10 @@ def main(args):
         # num(tokens_per_record),
     )
 
-    logging.info(f'created unique index file {output}, hashvalues {output}.farmhash')
+    logging.info(
+        f"created unique index file {output}, hashvalues {output_no_ext}.uniq.farmhash, duplicates {output_no_ext}.duplicates.farmhash"
+    )
+    logging.info(f'grep {output_no_ext}.sorted.farmhash -e <farmhash> # find which files are duplicated')
 
 
 if __name__ == "__main__":

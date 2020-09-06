@@ -108,13 +108,14 @@ def main(args):
         output = os.path.join(args.output, 'index.txt')
     else:
         output = args.output
+
     nproc = args.nproc
 
     if nproc == 0:
         nproc = cpu_count() - 1
 
     file_chunks = chunks(
-        txt_files, (len(txt_files) // (args.nproc + 1))
+        txt_files, (len(txt_files) // (nproc + 1))
     )  # Assign files_per file to a tfrecord file each
 
     # start process
@@ -124,7 +125,7 @@ def main(args):
     )
 
     start = time.time()
-    hash_files, count = run(args.nproc, jobs, total=len(file_chunks))
+    hash_files, count = run(nproc, jobs, total=len(file_chunks))
     with tempfile.NamedTemporaryFile('wt', delete=True) as index:
         for s in hash_files:
             index.write('%s\n' % s)

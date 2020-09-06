@@ -26,7 +26,7 @@ It uses and supports *ONLY*:
 
 # Useful Commands
 
-## TLDR;
+## TL;DR
 
 ```bash
 # install the library and create gpt2 encoded binaries

@@ -76,7 +76,7 @@ class AdditionProducer:
             a,
             b,
             c,
-        )  # e.g. 03+25=28 becomes "0325028"
+        )  # e.g. 03+25=28 becomes "0.2.0-alpha28"
         dix = [int(s) for s in render]  # convert each character to its token index
         # x will be input to GPT and y will be the associated expected outputs
         x = np.array(dix[:-1], dtype=np.int32)

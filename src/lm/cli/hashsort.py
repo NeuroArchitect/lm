@@ -178,7 +178,9 @@ def main(args):
     logging.info(
         f"created unique index file {output}, hashvalues {output_no_ext}.uniq.farmhash, duplicates {output_no_ext}.duplicates.farmhash"
     )
-    logging.info(f'grep {output_no_ext}.sorted.farmhash -e <farmhash> # find which files are duplicated')
+    logging.info(
+        f"grep {output_no_ext}.sorted.farmhash -e <farmhash> # find which files are duplicated"
+    )
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import os
 import farmhash
 import numpy as np
 import tensorflow as tf
+import tensorflow.compat.v1 as v1
 
 import lm.parsers
 
@@ -98,11 +99,11 @@ def transform_many_and_write_one_tfrecord(job):
     example_count = 0
     *_, ext = os.path.splitext(dst)
     if ext in (".gz", ".gzip"):
-        options = _trec_options(tf.io.TFRecordCompressionType.GZIP)
+        options = _trec_options(v1.io.TFRecordCompressionType.GZIP)
     elif ext in (".lz",):
-        options = _trec_options(tf.io.TFRecordCompressionType.ZLIB)
+        options = _trec_options(v1.io.TFRecordCompressionType.ZLIB)
     else:
-        options = _trec_options(tf.io.TFRecordCompressionType.NONE)
+        options = _trec_options(v1.io.TFRecordCompressionType.NONE)
 
     with tf.io.TFRecordWriter(dst, options) as w:
         for source in sources:

@@ -50,7 +50,7 @@ def run(nproc, src_dst_list, total):
     ):
         hash_files.append(hash_file)
         total += count
-    return hash_files, count
+    return hash_files, total
 
 
 def parse_args(args, parser):

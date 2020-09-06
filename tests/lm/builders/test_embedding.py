@@ -68,4 +68,4 @@ class EmbeddingTest(parameterized.TestCase, tf.test.TestCase):
 
         x = m.import_tf_tensor(x, [m.batch_dim, m.sequence_dim])
 
-        self.assertEqual(m.batch_dim, mtf.Dimension(name="batch", size=10))
+        self.assertEqual(m.batch_dim, mtf.Dimension(name="batch", size=2))

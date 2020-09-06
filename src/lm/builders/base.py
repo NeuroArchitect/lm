@@ -46,4 +46,4 @@ class MeshGraph:
         super().__setattr__(name, value)
 
     def import_tf_tensor(self, x, dims):
-        return mtf.import_tf_tensor(self.mesh, x, shape=mtf.Shape(dims))
+        return mtf.import_tf_tensor(self._mesh, x, shape=mtf.Shape(dims))

@@ -3,6 +3,12 @@ set -e
 
 rm -fr /tmp/tfrecord
 
+# create unique list of files
+CLEANTXT_INPUT=${PWD}/data/uds
+CLEANTXT_OUTPUT=/tmp/index.txt
+lm hashsort ${CLEANTXT_INPUT} ${CLEANTXT_OUTPUT} --nproc 1
+exit
+
 # clean utf8
 CLEANTXT_INPUT=data/uds
 CLEANTXT_OUTPUT=/tmp/cleantxt
@@ -34,3 +40,5 @@ lm encode --encoder ${TOKENIZER_OUTPUT} ${ENCODE_INPUT} ${ENCODE_OUTPUT} --compr
 
 # check output
 lm_check_dataset ${ENCODE_OUTPUT} --encoder ${TOKENIZER_OUTPUT}
+
+

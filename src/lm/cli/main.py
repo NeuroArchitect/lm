@@ -66,6 +66,7 @@ def apprun():
     register_subcommand("configure")
     register_subcommand("train")
     register_subcommand("eval")
+    register_subcommand("hashsort")
     register_subcommand("interactive")
     register_subcommand("synth")
     app.run(main, flags_parser=parse_args)

@@ -1,6 +1,6 @@
 "The only valid example formats accepted by the framework"
-import os
 import collections
+import os
 
 import farmhash
 import numpy as np
@@ -197,11 +197,13 @@ Seq2SeqSimpleExample.serialize = _serialize_seq2seq
 
 
 def from_file_list(file_list):
-    has_any_gz = any( f.endswith('gz') for f in file_list )
-    has_all_gz = all( f.endswith('gz') for f in file_list )
+    has_any_gz = any(f.endswith("gz") for f in file_list)
+    has_all_gz = all(f.endswith("gz") for f in file_list)
     if has_any_gz and not has_all_gz:
-        raise ValueError('invalid mix of gz and non gz records')
+        raise ValueError("invalid mix of gz and non gz records")
     if has_all_gz:
-        return lambda *args, **kwds: tf.data.TFRecordDataset(*args, **kwds, compression_type='GZIP', buffer_size=None)
+        return lambda *args, **kwds: tf.data.TFRecordDataset(
+            *args, **kwds, compression_type="GZIP", buffer_size=None
+        )
 
     return tf.data.TFRecordDataset

@@ -12,6 +12,7 @@ import lm.encoders
 import lm.examples
 import lm.human
 
+
 # Helper functions and classes
 def sizechunks(l, n):
     out = []
@@ -166,7 +167,7 @@ def main(args):
 
     # check output directory
     if tf.io.gfile.exists(args.output) and tf.io.gfile.listdir(args.output):
-        logging.error('output directory is not empty. refusing to continue')
+        logging.error("output directory is not empty. refusing to continue")
         exit(-1)
     tf.io.gfile.makedirs(args.output)
 
@@ -183,6 +184,7 @@ def main(args):
 
     start = time.time()
     token_total, example_total = run(args.nproc, jobs, total=len(file_chunks))
+
     end = time.time()
     elapsed = end - start
     tokens_per_second = token_total / elapsed

@@ -1,4 +1,5 @@
 import os
+
 import tensorflow as tf
 
 
@@ -20,9 +21,7 @@ def filepaths_from_user_input(location):
 
     # try with general glob
     if not txt_files:
-        txt_files = list(
-            tf.io.gfile.glob(os.path.join(location, "*"))
-        )
+        txt_files = list(tf.io.gfile.glob(os.path.join(location, "*")))
 
     if not txt_files:
         # is the input a list of files?

@@ -2,7 +2,7 @@
 
 __author__ = """Fabrizio Milo"""
 __email__ = "remove-this-fmilo@entropysource.com"
-__version__ = "0.2.0-alpha"
+__version__ = "0.2.1-alpha"
 
 
 from .registry import (

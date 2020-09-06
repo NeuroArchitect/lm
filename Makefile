@@ -1,6 +1,9 @@
 .PHONY: clean clean-test clean-pyc clean-build docs help
 .DEFAULT_GOAL := help
 
+PREFIX ?= /usr/local
+VERSION = "v0.0.1"
+
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
 
@@ -85,3 +88,26 @@ dist: clean ## builds source and wheel package
 
 install: clean ## install the package to the active Python's site-packages
 	python setup.py install
+
+docker-dev:
+	docker build --rm . -t lm:dev
+
+
+install:
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	install -m 0755 ruby-cli-app-wrapper $(DESTDIR)$(PREFIX)/bin/ruby-cli-app
+
+uninstall:
+	@$(RM) $(DESTDIR)$(PREFIX)/bin/ruby-cli-app
+	@docker rmi nlpz/lm:$(VERSION)
+	@docker rmi nlpz/lm:latest
+
+docker:
+	@docker build -t nlpz/lm:$(VERSION) . \
+	&& docker tag -f nlpz/lm:$(VERSION) nlpz/lm:latest
+
+publish: build
+	@docker push nlpz/lm:$(VERSION) \
+	&& docker push nlpz/lm:latest
+
+.PHONY: all install uninstall build publish

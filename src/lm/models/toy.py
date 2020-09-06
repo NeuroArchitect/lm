@@ -1,8 +1,10 @@
 import mesh_tensorflow as mtf
 import tensorflow as tf
+import tensorflow.compat.v1 as v1
+from pydantic.dataclasses import dataclass
 from tensorflow.python.tpu import tpu_estimator
 
-from . import nn
+from lm.builders import nn
 
 
 class Attention:
@@ -30,6 +32,38 @@ class Attention:
         )
 
 
+def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
+    """Compute the union of the current variables and checkpoint variables."""
+    assignment_map = {}
+    initialized_variable_names = {}
+
+    name_to_variable = collections.OrderedDict()
+    for var in tvars:
+        name = var.name
+        m = re.match("^(.*):\\d+$", name)
+        if m is not None:
+            name = m.group(1)
+
+        if "global_step" in name or "adam_" in name or "slot_" in name:
+            continue
+        name_to_variable[name] = var
+
+    tf.logging.info("init_checkpoint:{} ".format(init_checkpoint))
+    init_vars = tf.train.list_variables(init_checkpoint)
+
+    assignment_map = collections.OrderedDict()
+    for x in init_vars:
+        (name, var) = (x[0], x[1])
+        if name not in name_to_variable:
+            continue
+        assignment_map[name] = name
+        initialized_variable_names[name] = 1
+        initialized_variable_names[name + ":0"] = 1
+
+    return (assignment_map, initialized_variable_names)
+
+
+@dataclass
 class ToyTransformerConfig:
     mesh_shape: str
     mesh_layout: str
@@ -37,12 +71,16 @@ class ToyTransformerConfig:
     optimizer: str
     num_hidden_layers: int
     use_bias: bool
+    initializer_range: float = 0.1  # stddev
+    channels_dropout_prob: float = 0.1
+    layer_output_dropout_prob: float = 0.1
 
 
 class ToyTransformer:
     def __init__(self, config: ToyTransformerConfig):
         super().__init__()
         self.config = config
+        self.__is_training = False
 
     @property
     def mesh_shape(self):
@@ -50,7 +88,7 @@ class ToyTransformer:
 
     @property
     def mesh_layout(self):
-        return self.config.layout
+        return self.config.mesh_layout
 
     @property
     def learning_rate(self) -> float:
@@ -60,16 +98,16 @@ class ToyTransformer:
     def optimizer(self) -> str:
         return self.config.optimizer
 
-    def __call__(self, features, labels, mode, params):  # this is the model_fn
+    def __call__(self, x_tf, y_tf, mode, params):  # this is the model_fn
 
         """A model is called by TpuEstimator."""
-        del labels
-        global_step = tf.train.get_global_step()
+        global_step = v1.train.get_or_create_global_step()
+        assert global_step is not None
 
         # Graph setup
         graph = mtf.Graph()
         mesh_shape = mtf.convert_to_shape(self.mesh_shape)
-        layout_rules = mtf.convert_to_layout_rules(self.layout)
+        layout_rules = mtf.convert_to_layout_rules(self.mesh_layout)
         if params["use_tpu"]:
             ctx = params["context"]
             num_hosts = ctx.num_hosts
@@ -85,6 +123,7 @@ class ToyTransformer:
             mesh = mtf.Mesh(graph, "my_mesh", var_placer)
             mesh_devices = [""] * mesh_shape.size
 
+            # mesh_impl will be used for lowering
             mesh_impl = mtf.simd_mesh_impl.SimdMeshImpl(
                 mesh_shape, layout_rules, mesh_devices, devices_memory_usage
             )
@@ -97,14 +136,19 @@ class ToyTransformer:
 
             mesh = mtf.Mesh(graph, "my_mesh", var_placer)
 
-        # RUN Model
+        # Compose Model
+        n_tokens_dim = mtf.Dimension('n_tokens', params['n_tokens'])
+        # n_channels_dim = mtf.Dimension('n_channels', params['n_channels'])
         with mtf.utils.outside_all_rewrites():
-            logits, loss = self.model(mesh, features, params)
+            logits, y = self.model(mesh, x_tf, y_tf, params)
 
-        # TRAIN mode
+            predictions, loss = self.loss(logits, y, n_tokens_dim)
+
+
+        # configure optimizer
         if mode == tf.estimator.ModeKeys.TRAIN:
             var_grads = mtf.gradients(
-                [loss], [v.outputs[0] for v in graph.trainable_variables]
+                [loss], [v.value for v in graph.trainable_variables]
             )
             if self.optimizer == "Adafactor":
                 optimizer = mtf.optimize.AdafactorOptimizer()
@@ -118,14 +162,21 @@ class ToyTransformer:
 
         # covert back to tensorflow format
         lowering = mtf.Lowering(graph, {mesh: mesh_impl})
-        tf_loss = tf.to_float(lowering.export_to_tf_tensor(loss))
+        
+        predictions_tf = lowering.export_to_tf_tensor(predictions)
+        loss_tf = tf.cast(lowering.export_to_tf_tensor(loss), tf.float32)
+
         if mode == tf.estimator.ModeKeys.TRAIN:
+            # compute gradients 
             tf_update_ops = [lowering.lowered_operation(op) for op in update_ops]
-            tf_update_ops.append(tf.assign_add(global_step, 1))
-            tf.logging.info("tf_update_ops: {}".format(tf_update_ops))
+            # update the global step
+            tf_update_ops.append(v1.assign_add(global_step, 1))
+            tf.logging.info("tf_update_ops: %s", tf_update_ops)
             train_op = tf.group(tf_update_ops)
         else:
-            tf_logits = lowering.export_to_tf_tensor(fully_replicated_logits)
+            logits_tf = lowering.export_to_tf_tensor(fully_replicated_logits)
+        
+        scaffold_fn = self.restore_from_checkpoint(params['checkpoint_dir'], params['use_tpu'])
 
         # create estimator
         with mtf.utils.outside_all_rewrites():
@@ -135,157 +186,255 @@ class ToyTransformer:
                 saver = tf.train.Saver(
                     tf.global_variables(),
                     sharded=True,
-                    max_to_keep=10,
+                    max_to_keep=10, # TODO this is a config
                     keep_checkpoint_every_n_hours=2,
                     defer_build=False,
                     save_relative_paths=True,
                 )
                 tf.add_to_collection(tf.GraphKeys.SAVERS, saver)
+
+                # checkpoint save hook
                 saver_listener = mtf.MtfCheckpointSaverListener(lowering)
-                saver_hook = tf.train.CheckpointSaverHook(
-                    self.model_dir,
-                    save_steps=1000,
+                saver_hook = tf.estimator.CheckpointSaverHook(
+                    checkpoint_dir=params['checkpoint_dir'],
+                    save_steps=1000,  # TODO: fixme
                     saver=saver,
                     listeners=[saver_listener],
                 )
 
                 return tpu_estimator.TPUEstimatorSpec(
                     tf.estimator.ModeKeys.TRAIN,
-                    loss=tf_loss,
+                    loss=loss_tf,
                     train_op=train_op,
                     training_hooks=[restore_hook, saver_hook],
+                    scaffold_fn=scaffold_fn
                 )
             elif mode == tf.estimator.ModeKeys.EVAL:
-
-                def metric_fn(tf_logits):
-                    mean_logits = tf.metrics.mean(tf_logits)
+                
+                def metric_fn(logits_tf):
+                    mean_logits = tf.metrics.mean(logits_tf)
                     return {"mean_logits": mean_logits}
 
-                eval_metrics = (metric_fn, [tf_logits])
+                eval_metrics = (metric_fn, [logits_tf])
                 return tpu_estimator.TPUEstimatorSpec(
                     tf.estimator.ModeKeys.EVAL,
                     evaluation_hooks=[restore_hook],
-                    loss=tf_loss,
+                    loss=loss_tf,
                     eval_metrics=eval_metrics,
-                )
+                    scaffold_fn=scaffold_fn
+                ), lowering # FIXME
             elif mode == tf.estimator.ModeKeys.PREDICT:
                 return tpu_estimator.TPUEstimatorSpec(
                     tf.estimator.ModeKeys.PREDICT,
-                    evaluation_hooks=[restore_hook],
-                    loss=None,
-                    eval_metrics=eval_metrics,
+                    prediction_hooks=[restore_hook],
+                    predictions={
+                        "predictions": predictions_tf,
+                    },
+                    scaffold_fn=scaffold_fn
+                ), lowering # FIXME
+
+    @property
+    def dense_initializer(self):
+        if self.config.initializer_range:
+            return tf.truncated_normal_initializer(stddev=self.config.initializer_range)
+        else:
+            return mtf.layers.VarianceScalingInitializer(scale=0.4)
+
+    @property
+    def embedding_initializer(self):
+        initializer = self.dense_initializer
+        if isinstance(initializer, mtf.layers.DenseInitializer):
+            # embedding matrix is also used as classifier weight matrix.
+            # scale it appropriately.
+            return initializer(reduced_dims=[self.model_dim], new_dims=[self.vocab_dim])
+        else:
+            return initializer
+
+    @property
+    def num_hidden_layers(self):
+        return self.config.num_hidden_layers
+
+    def normalize(self, x, reduce_dim):
+        return nn.layer_norm(
+            x,
+            reduce_dim,
+            subtract_mean=self.config.use_bias,
+            use_bias=self.config.use_bias,
+        )
+
+    def channels_to_token_projection(self, mesh, x, batch_dim,  sequence_dim, n_channels_dim, n_tokens_dim, variable_dtype):
+        # Perform embedding lookup on the word ids.
+        w = mtf.get_variable(
+            mesh,
+            "final_projection",
+            mtf.Shape([n_channels_dim, n_tokens_dim]),
+            initializer=self.embedding_initializer,
+            master_dtype=variable_dtype.master_dtype,
+            slice_dtype=variable_dtype.slice_dtype,
+            activation_dtype=variable_dtype.activation_dtype,
+        )
+        # from input to mtf
+        x = mtf.einsum([x, w], output_shape=[batch_dim, sequence_dim, n_tokens_dim])
+
+        # x = self.normalize(x, n_tokens_dim)
+        # x = self.regularize(x, n_tokens_dim)
+        return x
+
+    def restore_from_checkpoint(self, init_checkpoint, use_tpu:bool):
+        tvars = tf.trainable_variables()
+        initialized_variable_names = {}
+        scaffold_fn = None
+        if not init_checkpoint:
+            return scaffold_fn
+
+        (
+            assignment_map,
+            initialized_variable_names,
+        ) = get_assignment_map_from_checkpoint(tvars, init_checkpoint)
+        
+        if use_tpu:
+            def tpu_scaffold():
+                tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+                return tf.train.Scaffold()
+
+            scaffold_fn = tpu_scaffold
+        else:
+            tf.train.init_from_checkpoint(init_checkpoint, assignment_map)
+
+        # update name from checkpoint
+        tf.logging.info("**** Trainable Variables ****")
+        for var in tvars:
+            init_string = ""
+            if var.name in initialized_variable_names:
+                init_string = ", *INIT_FROM_CKPT*"
+                tf.logging.info(
+                    "  name = %s, shape = %s%s", var.name, var.shape, init_string
                 )
 
-        @property
-        def dense_initializer(self):
-            if self.config.initializer_range:
-                return tf.truncated_normal_initializer(
-                    stddev=self.config.initializer_range
+        return scaffold_fn
+
+    def model(self, mesh, x, y, params):
+        """
+        The input variables and labels are still tensorflow variables.
+        This function should take care of converting between mesh tensorflow 
+        and tensorflow
+        """
+        # x :: [batch, io, vocab]
+        assert x.dtype in (tf.int32, ), 'only integer sequences are supported'
+
+        if params["precision"] == "bfloat16":
+            dtype = tf.bfloat16
+        else:
+            dtype = tf.float32
+        
+        # master has always dtype float32, slices can have bfloat16 or float32
+        variable_dtype = mtf.VariableDType(tf.float32, dtype, dtype)
+
+        # Build the actual model
+        batch_dim = mtf.Dimension("batch", params["batch_size"])
+        # tokens_dim = mtf.Dimension("tokens", params["tokens_size"]) # how big are the tokens. Usually just one integer
+        n_tokens_dim = mtf.Dimension("n_tokens", params["n_tokens"])
+        sequence_dim = mtf.Dimension("sequence", params["n_sequences"])
+        n_channels_dim = mtf.Dimension("channel", params["n_channels"])
+
+        # from input to mtf
+        x = mtf.import_tf_tensor(
+            mesh, x, mtf.Shape([batch_dim, sequence_dim ])
+        )
+        y = mtf.import_tf_tensor(
+            mesh, y, mtf.Shape([batch_dim, sequence_dim ])
+        )        
+
+        # Embeddings
+        with v1.variable_scope("toy"):
+            with v1.variable_scope("embeddings"):
+                # Perform embedding lookup on the word ids.
+                embedding_table = mtf.get_variable(
+                    mesh,
+                    "token_embeddings",
+                    mtf.Shape([n_tokens_dim, n_channels_dim]),
+                    initializer=self.embedding_initializer,
+                    master_dtype=variable_dtype.master_dtype,
+                    slice_dtype=variable_dtype.slice_dtype,
+                    activation_dtype=variable_dtype.activation_dtype,
                 )
-            else:
-                return mtf.layers.VarianceScalingInitializer(scale=0.4)
-
-        @property
-        def embedding_initializer(self):
-            initializer = self.dense_initializer
-            if isinstance(initializer, mtf.layers.DenseInitializer):
-                # embedding matrix is also used as classifier weight matrix.
-                # scale it appropriately.
-                return initializer(
-                    reduced_dims=[self.model_dim], new_dims=[self.vocab_dim]
+                # project x into the embedding table to fetch the embeddings
+                # for each input token in the sequence
+                # >[batch, seq, n_tokens] x [n_tokens, n_channels] :
+                # =[batch, seq, n_channels]
+                index = x # use the token ids as index in the lookup operation
+                tok_embedding_output = mtf.gather(
+                    embedding_table, index, dim=n_tokens_dim, # output_shape=channels_dim
                 )
-            else:
-                return initializer
 
-        @property
-        def num_hidden_layers(self):
-            return self.config.num_hidden_layers
+                # Add positional embeddings and token type embeddings, then layer
+                # normalize and perform dropout.
+                embedding_output = tok_embedding_output
 
-        def normalize(self, x, reduce_dim):
-            return nn.layer_norm(
-                x,
-                reduce_dim,
-                subtract_mean=self.config.use_bias,
-                use_bias=self.config.use_bias,
+                # normalize
+                embedding_output = self.normalize(
+                    embedding_output, reduce_dim=n_channels_dim
+                )
+                # regularize
+                embedding_output = mtf.dropout(
+                    embedding_output,
+                    keep_prob=1.0 - self.config.layer_output_dropout_prob,
+                )
+
+            pos_embedding = mtf.get_variable(
+                mesh,
+                "pos_embeddings",
+                mtf.Shape([sequence_dim, n_channels_dim]),
+                initializer=self.embedding_initializer,
             )
 
-        def model(self, mesh, x, y, params):
-            # x :: [batch, io, vocab]
+            # shift token by pos embeddings
+            x = embedding_output + pos_embedding
+            x = mtf.cast(x, variable_dtype.activation_dtype)
 
-            if params["precision"] == "bfloat16":
-                dtype = tf.bfloat16
-                # master has type float32, slice and activation have type bfloat16
-                variable_dtype = mtf.VariableDType(tf.float32, tf.bfloat16, tf.bfloat16)
-            else:
-                dtype = tf.float32
-                # master, slice and activate have all float16
-                variable_dtype = mtf.VariableDType(tf.float32, tf.float32, tf.float32)
-
-            # Build the actual model
-            batch_dim = mtf.Dimension("batch", params["batch_size"])
-            vocab_dim = mtf.Dimension("vocab", params["vocab_size"])
-            io_dim = mtf.Dimension("sequence", params["io"])
-            io_chan_dim = mtf.Dimension("io", params["io_channels"])
-
-            # from input to mtf
-            x = mtf.import_tf_tensor(mesh, x, mtf.Shape([batch_dim, io_dim, vocab_dim]))
-
-            # Embeddings
-            with tf.variable_scope(scope="toy", default_name="seq2seq"):
-                with tf.variable_scope("embeddings"):
-                    # Perform embedding lookup on the word ids.
-                    embedding_table = mtf.get_variable(
-                        mesh,
-                        "word_embeddings",
-                        mtf.Shape([vocab_dim, io_chan_dim]),
-                        initializer=self.embedding_initializer,
+            # Add transformers blocks
+            # h: is for hidden. this are the channels being passed down the pipeline
+            h = x
+            print('channels:', h.shape)
+            dim = n_channels_dim
+            for lnum in range(1, self.num_hidden_layers + 2):
+                if lnum + 1 == self.num_hidden_layers + 2:
+                    # output layer
+                    dim = n_channels_dim
+                else:
+                    h = mtf.layers.dense(
+                        h,
+                        dim,
+                        use_bias=False,
+                        master_dtype=variable_dtype.master_dtype,
+                        slice_dtype=variable_dtype.slice_dtype,
+                        name="layer_%d" % lnum,
                     )
+            last_layer = h
+            
+            # last temp layer
+            logits = self.channels_to_token_projection(mesh, last_layer, batch_dim, sequence_dim, n_channels_dim, n_tokens_dim, variable_dtype)
+            
+            logits = mtf.identity(logits, "logits")
+            print('logits', logits.shape) 
+            return logits, y
 
-                    word_embedding_output = mtf.gather(
-                        embedding_table, x, dim=vocab_dim, output_shape=io_chan_dim
-                    )
+    def train_mode(self):
+        # TODO add context
+        self.__is_training = True
 
-                    # Add positional embeddings and token type embeddings, then layer
-                    # normalize and perform dropout.
-                    embedding_output = word_embedding_output
+    @property
+    def is_training(self):
+        return self.__is_training
 
-                    pos_embedding = mtf.get_variable(
-                        mesh,
-                        "pos_embeddings",
-                        mtf.Shape([io_dim, io_chan_dim]),
-                        initializer=self.embedding_initializer,
-                    )
-                    embedding_output = self.normalize(embedding_output)
-                    embedding_output = mtf.dropout(
-                        embedding_output,
-                        keep_prob=1.0 - self.config.layer_output_dropout_prob,
-                    )
-
-                # shift token by pos embeddings
-                x = word_embedding_output + pos_embedding
-                x = mtf.cast(x, variable_dtype.activation_dtype)
-
-                h = x
-                for lnum in range(1, self.num_hidden_layers + 2):
-                    if lnum + 1 == self.num_hidden_layers + 2:
-                        # output layer
-                        dim = io_dim
-                    elif lnum % 2 == 0:
-                        dim = mtf.Dimension("hidden_even", io_chan_dim)
-                    else:
-                        dim = mtf.Dimension("hidden_odd", io_chan_dim)
-                        h = mtf.layers.dense(
-                            h,
-                            dim,
-                            use_bias=False,
-                            master_dtype=variable_dtype.master_dtype,
-                            slice_dtype=variable_dtype.slice_dtype,
-                            name="layer_%d" % lnum,
-                        )
-
-                prediction = h
-                # project back to token dimensions
-
-                # compute the mean quare loss between the input and the output
-                loss = mtf.reduce_mean(mtf.square(y - prediction))
-                return prediction, loss
+    def loss(self, logits, y, reduce_dim):
+        with tf.variable_scope("loss"):
+            if self.is_training:
+                # I.e., 0.1 dropout
+                output_layer = mtf.dropout(output_layer, keep_prob=0.9)
+            # project back to token dimensions
+            print(logits.shape)
+            prediction = mtf.softmax(logits, reduce_dim, name="prediction")
+            # compute the mean square loss between the input and the output
+            loss = mtf.reduce_mean(mtf.square(y - prediction))
+        return prediction, loss

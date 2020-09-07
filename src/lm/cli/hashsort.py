@@ -1,11 +1,9 @@
 import base64
-import cmd
 import os
 import subprocess
 import tempfile
 import time
 from multiprocessing import Pool, cpu_count
-from typing import Dict
 
 import farmhash
 import tensorflow as tf

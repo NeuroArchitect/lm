@@ -12,5 +12,5 @@ local SumOneDataset(max_sequence_length=8, vocab_size=10) = {
     kind: "lm.tasks.SumOne",
     description: "sample task to learn to sum one to each input token",
     dataset: SumOneDataset(),
-    infeed: infeeds.TFRecordDatasetReader(source=self.dataset),
+    infeed: infeeds.TFRecordDatasetReader(sources=[self.dataset]),
 }

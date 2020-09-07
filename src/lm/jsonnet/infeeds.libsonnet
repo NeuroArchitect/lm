@@ -12,10 +12,10 @@ Infeed library. Supported infeeds:
     //     max_sequence_length: dataset.max_sequence_length
     // },
 
-    TFRecordDatasetReader(source, batch_size=1, compression=null)::{
+    TFRecordDatasetReader(sources, batch_size=1, compression_type=null)::{
         kind: 'lm.infeeds.TFRecordDatasetReader',
         batch_size: batch_size,
-        compression: compression,
-        source: source,
+        compression_type: if compression_type == null then 'none' else compression_type,
+        sources: sources,
     },
 }

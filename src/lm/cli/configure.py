@@ -37,8 +37,8 @@ def try_path(dir, rel):
         return full_path, f.read()
 
 
-def import_callback(dir, rel):
-    full_path, content = try_path(dir, rel)
+def import_callback(loc, rel):
+    full_path, content = try_path(loc, rel)
     if content:
         return full_path, content
     raise RuntimeError("File not found")

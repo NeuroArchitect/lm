@@ -1,2 +1,4 @@
 " register all the declared infeeds "
-from .readers import *  # noqa: F403 F401
+from .readers import TFRecordDatasetReader  # noqa: F403 F401
+
+__INFEEDS__ = [TFRecordDatasetReader]

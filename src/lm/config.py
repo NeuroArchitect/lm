@@ -55,7 +55,7 @@ def import_callback(location, rel):
     raise RuntimeError("File not found")
 
 
-def load(resource: str):
+def load(resource: str, **kwds):
     if tf.io.gfile.isdir(resource):
         if tf.io.gfile.exists(os.path.join(resource, "dataset.info.json")):
             resource = os.path.join(resource, "dataset.info.json")
@@ -77,9 +77,7 @@ def load(resource: str):
     elif ext in (".jsonnet",):
         try:
             json_str = _jsonnet.evaluate_file(
-                resource,
-                ext_vars={"MODEL_PATH": "Bob"},
-                import_callback=import_callback,
+                resource, ext_vars=kwds, import_callback=import_callback,
             )
             params = json.loads(json_str)
         except RuntimeError as e:

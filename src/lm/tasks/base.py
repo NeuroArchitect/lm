@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from lm.infeeds import InfeedConfig
+from lm.infeeds.base import InfeedConfig
 
 
 class BaseTaskDatasetConfig(BaseModel):

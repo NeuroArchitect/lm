@@ -1,4 +1,5 @@
 "an infeed generator "
+from enum import Enum
 from typing import Dict
 
 import tensorflow as tf
@@ -9,52 +10,56 @@ import lm
 from .base import Infeed, InfeedConfig
 
 
+class CompressionType(str, Enum):
+    gzip = "gzip"
+    zlib = "zlib"
+    none = "none"
+
+
 class TFRecordDatasetReaderConfig(InfeedConfig):
-    producer: Dict
+    batch_size: int
+    sources: str
+    compression_type: CompressionType = CompressionType.none
 
+    n_tokens: int = 10
+    len_sequence: int = 8
 
-@lm.register_infeed("lm.infeeds.TFRecordDatasetReader")
+@lm.register_infeed("lm.infeeds.TFRecordDatasetReader", TFRecordDatasetReaderConfig)
 class TFRecordDatasetReader(Infeed):
-    def __init__(self, **kwds):
+    def __init__(self, config: TFRecordDatasetReaderConfig):
         super().__init__()
-        self.__dict__.update(dict(TFRecordDatasetReaderConfig(**kwds)))
+        self.config = config
 
-    # def __call__(self, params: Dict):
-    #     producer = self.create_producer()
+    @property
+    def sources(self):
+        return self.config.sources
 
-    #     batch_size = params["batch_size"]
-    #     context_length = producer.context_length
-    #     example_sequence_shape = tf.TensorShape((batch_size, context_length))
-
-    #     dataset = tf.data.Dataset.from_generator(
-    #         producer,
-    #         output_types=(tf.int64, tf.int64),
-    #         output_shapes=(example_sequence_shape, example_sequence_shape),
-    #     )
-    #     return dataset
-
-    def __call__(self, params):
+    def __call__(self, params: Dict) -> tf.data.Dataset:
         """Input function which provides a single batch for train or eval."""
-        # Retrieves the batch size for the current shard. The # of shards is
-        # computed according to the input pipeline deployment. See
-        # `tf.estimator.tpu.RunConfig` for details.
+
         batch_size = params["batch_size"]
-        max_seq_length = params["max_sequence_length"]
+        len_sequence = params["len_sequence"]
 
         logging.info(
-            "call Seq2SeqTFRecordDataset() with batch size {} and sequence length",
+            "call Seq2SeqTFRecordDataset() with batch size %d and sequence length %d",
             batch_size,
-            max_seq_length,
+            len_sequence,
         )
 
-        filenames = tf.io.gfile.glob(self.config.file_pattern)
-        logging.info(
-            "Found %s files matching %s" % (len(filenames), self.config.file_pattern)
-        )
+        if self.sources.endswith("/") and tf.io.gfile.exists(self.sources + "/"):
+            raise ValueError("invalid dataset directory. contains nested empty folders")
+
+        filenames = tf.io.gfile.glob(self.config.sources)
+        logging.info("Found %s files matching %s" % (len(filenames), self.sources))
         if not filenames:
-            raise ValueError("No matching files found")
+            raise ValueError(
+                "No matching files found for pattern %s" % self.config.sources
+            )
         ds = tf.data.TFRecordDataset(filenames, buffer_size=64 * 1024 * 1024)
         keys = ["content", "target"]
+
+        def format_tokens(tokens):
+            return tf.reshape(tf.cast(tokens, tf.int32), [len_sequence, ])
 
         # Examples are already pre-processed
         def decode_example(serialized_example):
@@ -63,9 +68,10 @@ class TFRecordDatasetReader(Infeed):
                 serialized=[serialized_example],
                 features={k: tf.VarLenFeature(tf.int64) for k in keys},
             )
-            decoded = {k: v.values for k, v in decoded.items()}
+            # cast the features to int32, shape it to [batch_size, len_sequence]
+            decoded = {k: format_tokens(v.values) for k, v in decoded.items()}
             return decoded["content"], decoded["target"]
 
         ds = ds.map(decode_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
+        ds = ds.batch(batch_size=batch_size, drop_remainder=True) 
         return ds

@@ -1,11 +1,13 @@
 # lm: The Language Model Pipeline
 
-[![image](https://img.shields.io/pypi/v/lm.svg)](https://pypi.python.org/pypi/lm)
-<a href="https://github.com/NeuroArchitect/lm/blob/master/LICENSE">
-    <img alt="GitHub" src="https://img.shields.io/github/license/NeuroArchitect/lm.svg?color=blue">
-</a>
-[![Actions Status](https://github.com/NeuroArchitect/lm/workflows/build/badge.svg)](https://github.com/NeuroArchitect/lm/actions)
-
+[![PyPI
+version](https://badge.fury.io/py/lm.svg)](https://badge.fury.io/py/lm)
+[![GitHub
+Issues](https://img.shields.io/github/issues/NeuroArchitect/lm.svg)](https://github.com/NeuroArchitect/lm/issues)
+[![Contributions
+welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![License](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Build Status](https://github.com/NeuroArchitect/lm/workflows/build/badge.svg)](https://github.com/NeuroArchitect/lm/actions?query=workflow%3Abuild)
 
 There are few frameworks out there that focus on sequence to sequence neural network models.
 Most notables are the ones built by [Google](github.com/tensorflow/seq2seq) and [Facebook](github.com/pytorch/fairseq).

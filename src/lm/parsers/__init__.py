@@ -10,7 +10,7 @@ from .text import (
     readpassage_txt,
 )
 
-_ = (readfile_txt, readlines_txt, readpassage_txt)
+_ = (readfile_txt, readlines_txt, readpassage_txt, readfile_gzip, readlines_gzip)
 
 
 def parse_url(location, strategy):

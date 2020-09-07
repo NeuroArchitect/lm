@@ -20,12 +20,13 @@ fi
 
 # train task
 SAVED_TRAIN_SPEC=var/lm/runs/run_$(date +%s).json
-TRAIN_SPEC=etc/experiments/training/add-one_cpu.jsonnet
+TRAIN_SPEC=etc/experiments/training/sum-one_cpu.jsonnet
 # task specifies task, example format, infeed
 lm train ${TRAIN_SPEC} \
         --task ${TASK_SPEC} \
         --dataset ${SYNTH_OUTPUT} \
-        --save-settings ${SAVED_TRAIN_SPEC}
+        --save-settings ${SAVED_TRAIN_SPEC} 
+        # --check-infeed
 
 # evaluate by synth new data
 SYNTH_TEST_OUTPUT=/tmp/${TASK_NAME}/test

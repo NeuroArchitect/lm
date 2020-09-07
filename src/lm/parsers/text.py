@@ -1,4 +1,4 @@
-import os
+import gzip
 
 import tensorflow as tf
 from absl import logging

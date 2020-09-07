@@ -59,7 +59,7 @@ def main(args):
 
 
 def apprun():
-    tf.disable_v2_behavior()
+    v1.disable_v2_behavior()
 
     register_subcommand("encode")
     register_subcommand("cleantxt")
@@ -69,6 +69,7 @@ def apprun():
     register_subcommand("hashsort")
     register_subcommand("interactive")
     register_subcommand("synth")
+    register_subcommand("tpu_profile")
     app.run(main, flags_parser=parse_args)
 
 

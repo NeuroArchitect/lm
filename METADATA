@@ -1,0 +1,28 @@
+Metadata-Version: 2.1
+Name: lm
+Version: 0.2.2-alpha
+Summary: Language Modeling
+Home-page: https://github.com/NeuroArchitect/lm
+Author: EntropySource 
+Author-email: fmilo@entroypysource.com
+License: Apache 2.0
+Keywords: nlp pipeline tensorflow tensorflow-mesh tpu
+Platform: UNKNOWN
+Classifier: Development Status :: 2 - Pre-Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: google-api-python-client (==1.8.0)
+Requires-Dist: oauth2client
+
+
+End to End Language Model Pipeline built for training speed

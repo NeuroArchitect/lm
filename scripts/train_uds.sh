@@ -17,7 +17,7 @@ lm hashsort --nproc 1 ${INDEX} ${HASHSORT_OUTPUT}
 
 # clean the text files
 CLEANTXT_OUTPUT=/tmp/cleantxt
-lm cleantxt ${HASHSORT_OUTPUT} ${CLEANTXT_OUTPUT} --force
+lm cleantxt ${HASHSORT_OUTPUT} ${CLEANTXT_OUTPUT} --force --detect_encoding --ascii_only
 
 # train tokenizer on the clean dataset
 TOKENIZER_INPUT=${CLEANTXT_OUTPUT}

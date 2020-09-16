@@ -71,8 +71,7 @@ def process_multi_file(job):
         try:
             src, dst = src_dst
 
-            if job.ascii_only:
-                pass
+                
 
             with open(src, "rb") as rf:
                 data = rf.read()
@@ -92,6 +91,9 @@ def process_multi_file(job):
             txt = data.decode(encoding)
 
             clean = clean_text(txt)
+            
+            if job.ascii_only:
+                clean = re.sub(NO_ASCII, '', clean)
 
             # convert all to utf-8
             with open(dst, "w", encoding=job.encoding) as wf:
@@ -123,7 +125,11 @@ def parse_args(_, parser):
     )
     
     parser.add_argument(
-        "detect_encoding", action="store_true", help="detect encoding of file before opening."
+        "--detect_encoding", action="store_true", help="detect encoding of file before opening."
+    )
+    
+    parser.add_argument(
+        "--ascii_only", action="store_true", help="filter out non ascii characters"
     )
    
     parser.add_argument(

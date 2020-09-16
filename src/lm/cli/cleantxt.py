@@ -2,6 +2,7 @@
 Extract and cleans text and webarchive files
 """
 import os
+import sys
 import re
 import lm
 import shutil
@@ -15,12 +16,14 @@ from absl.flags import argparse_flags
 from tqdm import auto as tqdm
 
 import ftfy
-import chardet
+
+from chardet.universaldetector import UniversalDetector
+
 
 NO_ASCII = re.compile(r"[^\x00-\x7F]+")
 
 CleanTextJob = collections.namedtuple(
-    "CleanTextJob", ["files", "ascii_only", "detect_encoding"]
+    "CleanTextJob", ["files", "ascii_only", "detect_encoding", "encoding"]
 )
 
 
@@ -62,21 +65,36 @@ def process_single_file(src_dst):
 
 def process_multi_file(job):
     count = 0
+    detector = UniversalDetector()
+
     for src_dst in job.files:
         try:
             src, dst = src_dst
 
             if job.ascii_only:
                 pass
-            if job.detect_encoding:
-                pass
 
-            with open(src, "r", encoding="UTF-8") as rf:
+            with open(src, "rb") as rf:
                 data = rf.read()
 
-            clean = clean_text(data)
+            if job.detect_encoding:
+                detector.reset()
+                detector.feed(data)
+                if detector.done:
+                    encoding = detector.result['encoding']
+                else:
+                    # could not detect. use default
+                    encoding = job.encoding
 
-            with open(dst, "w", encoding="UTF-8") as wf:
+            else:
+                encoding = job.encoding
+
+            txt = data.decode(encoding)
+
+            clean = clean_text(txt)
+
+            # convert all to utf-8
+            with open(dst, "w", encoding=job.encoding) as wf:
                 wf.write(clean)
             count += 1
         except Exception as exc:
@@ -103,6 +121,11 @@ def parse_args(_, parser):
     parser.add_argument(
         "output", type=str, help="Location to write the extracted files"
     )
+    
+    parser.add_argument(
+        "detect_encoding", action="store_true", help="detect encoding of file before opening."
+    )
+   
     parser.add_argument(
         "--force",
         action="store_true",
@@ -134,7 +157,7 @@ def main(args):
     archives = lm.human.filepaths_from_user_input(args.input)
     if not archives:
         logging.error("no input data files found with input: %s. aborting", args.input)
-        exit(-1)
+        sys.exit(-1)
         return
 
     if os.path.exists(args.output):
@@ -158,7 +181,7 @@ def main(args):
             all_dst.append((src, dst))
 
         for chunk in chunks(all_dst, cpu_count):
-            yield CleanTextJob(chunk, ascii_only=False, detect_encoding=False)
+            yield CleanTextJob(chunk, ascii_only=False, detect_encoding=args.detect_encoding, encoding=args.encoding)
 
     start = time.time()
     count = parallel(job_gen(args.nproc, archives, args.output), total=len(archives))

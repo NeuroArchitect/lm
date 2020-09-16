@@ -1,4 +1,5 @@
 import base64
+import sys
 import os
 import subprocess
 import tempfile
@@ -93,7 +94,7 @@ def sh(cmdline):
             grepexc.returncode,
             grepexc.stdout,
         )
-        exit()
+        sys.exit(-1)
 
 
 def main(args):
@@ -105,7 +106,7 @@ def main(args):
     for f in txt_files:
         if not os.path.isabs(f):
             logging.error("file paths must be absolute. %s is not", f)
-            exit()
+            sys.exit(-1)
 
     if tf.io.gfile.isdir(args.output):
         output = os.path.join(args.output, "index.txt")

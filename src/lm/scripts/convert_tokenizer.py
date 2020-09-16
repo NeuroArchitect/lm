@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+
 import tensorflow as tf
+import sys
 from absl import app, logging
 from absl.flags import argparse_flags
 
@@ -26,7 +28,7 @@ def convert_tokenizer(src, dst):
         tok.model.save(dst)
     except Exception as exc:
         logging.error("could not load tokenizer: %r", exc)
-        exit()
+        sys.exit(-1)
 
 
 def main(args):

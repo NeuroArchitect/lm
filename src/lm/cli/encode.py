@@ -163,7 +163,7 @@ def main(args):
         logging.error(
             "cannot split %d files into %d chunks", len(txt_files), len(file_chunks)
         )
-        exit(-1)
+        sys.exit(-1)
 
     # check output directory
     if tf.io.gfile.exists(args.output) and tf.io.gfile.listdir(args.output):

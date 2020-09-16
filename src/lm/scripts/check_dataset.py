@@ -98,9 +98,14 @@ def main(args):
                 )
 
                 ids = tokenizer.decode(result["target"])
-
+                vocab = tokenizer.get_vocab()
+                inv_vocab = { v:k for k,v in vocab.items() }
+                print(vocab)
+                logging.info("content:      %r", pt.content)
+                logging.info("target:       %r", pt.target)
                 logging.info("gold text:    %r", pt.content.decode("utf-8"))
-                logging.info("decoded:       %r", ids)
+                logging.info("inv_vocab:    %r", [ inv_vocab[v] for v in pt.target])
+                logging.info("decoded:      %r", ids)
                 logging.info(
                     "tokenization: %s",
                     [

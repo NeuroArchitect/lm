@@ -130,7 +130,7 @@ def main(args):
         fd.writelines(f'{l}\n' for l in excluded)
 
     logging.info(
-        "processed {} files in {:.2f}s, {} / {} good files. accepted index is at %s. excluded index %s".format(
+        "processed {} files in {:.2f}s, {} / {} good files. accepted index is at {}. excluded index {}".format(
             len(lines), end - start, len(accepted), len(lines), args.output, args.output + '.excluded'
         )
     )

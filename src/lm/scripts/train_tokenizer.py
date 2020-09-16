@@ -85,7 +85,7 @@ def main(args):
     txt_files = listfiles(args.input)
     if not txt_files:
         logging.error("no data files found")
-        return
+        sys.exit(-1)
 
     os.makedirs(args.output, exist_ok=True)
 

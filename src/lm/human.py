@@ -4,6 +4,12 @@ import tensorflow as tf
 
 
 def filepaths_from_user_input(location):
+    try:
+        return _unsafe_filepaths_from_user_input(location)
+    except tf.errors.NotFoundError:
+        return []
+
+def _unsafe_filepaths_from_user_input(location):
     "utility method with few input heuristic to transform a 'location' into file URLs"
     location = location.strip()
     # check if is an index file
@@ -18,7 +24,10 @@ def filepaths_from_user_input(location):
     if txt_files:
         return txt_files
 
-    txt_files = list(p for p in tf.io.gfile.glob(location) if not tf.io.gfile.isdir(p))
+    if '*' in location:
+        txt_files = list(p for p in tf.io.gfile.glob(location) if not tf.io.gfile.isdir(p))
+    elif not tf.io.gfile.exists(location):
+        return []
 
     # try with general glob
     if not txt_files:

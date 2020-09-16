@@ -1,5 +1,6 @@
 #!/usr/bin/env bash 
 set -e
+set -x 
 
 rm -fr /tmp/tfrecord
 
@@ -21,7 +22,7 @@ lm cleantxt ${HASHSORT_OUTPUT} ${CLEANTXT_OUTPUT} --force
 # train tokenizer on the clean dataset
 TOKENIZER_INPUT=${CLEANTXT_OUTPUT}
 TOKENIZER_OUTPUT=/tmp/tokenizer/
-lm_train_tokenizer --vocab_size 1010 --input ${TOKENIZER_INPUT} --output ${TOKENIZER_OUTPUT}
+lm_train_tokenizer --vocab_size 10 --input ${TOKENIZER_INPUT} --output ${TOKENIZER_OUTPUT}
 
 # converts to tfrecord 
 ENCODE_INPUT=${CLEANTXT_OUTPUT}

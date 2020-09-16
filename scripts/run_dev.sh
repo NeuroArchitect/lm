@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-
-docker run --rm -it -v $PWD:/lm ~/Library/Caches/pip:~/.cache/pip/ lm:dev
+set -x 
+docker run --rm -it -v $PWD:/lm -v $HOME/Library/Caches/pip:/root/.cache/pip/ --entrypoint /bin/bash lm:dev 

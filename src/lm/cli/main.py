@@ -1,11 +1,15 @@
 import importlib
 import random
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import tensorflow as tf
+    from tensorflow.compat import v1
 
 import numpy as np
-import tensorflow as tf
 from absl import app
 from absl.flags import argparse_flags
-from tensorflow.compat import v1
 
 """Main LM command line"""
 
@@ -61,12 +65,13 @@ def main(args):
 def apprun():
     v1.disable_v2_behavior()
 
-    register_subcommand("encode")
+    register_subcommand("index")
+    register_subcommand("hashsort")
     register_subcommand("cleantxt")
-    register_subcommand("configure")
+    register_subcommand("encode")
     register_subcommand("train")
     register_subcommand("eval")
-    register_subcommand("hashsort")
+    register_subcommand("configure")
     register_subcommand("interactive")
     register_subcommand("synth")
     register_subcommand("tpu_profile")

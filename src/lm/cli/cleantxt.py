@@ -1,7 +1,12 @@
+"""
+Extract and cleans text and webarchive files
+"""
 import os
 import re
+import lm
 import shutil
 import time
+import collections
 from glob import glob
 from multiprocessing import Pool, cpu_count
 
@@ -10,16 +15,33 @@ from absl.flags import argparse_flags
 from tqdm import auto as tqdm
 
 import ftfy
+import chardet
 
-"""
-Extract and cleans text and webarchive files
-"""
-NOA = re.compile(r"[^\x00-\x7F]+")
+NO_ASCII = re.compile(r"[^\x00-\x7F]+")
+
+CleanTextJob = collections.namedtuple(
+    "CleanTextJob", ["files", "ascii_only", "detect_encoding"]
+)
+
+
+def chunks(l, n):
+    out = []
+    chunk = []
+    sz = 0
+    for path in l:
+        chunk.append(path)
+        sz += 1
+        if sz >= n:
+            out.append(chunk)
+            sz = 0
+            chunk = []
+    if chunk:
+        out.append(chunk)
+    return out
 
 
 def clean_text(text):
-    text = ftfy.fix_text(text, normalization="NFKC")
-    return NOA.sub(" ", text)
+    return ftfy.fix_text(text, normalization="NFKC")
 
 
 def process_single_file(src_dst):
@@ -38,16 +60,40 @@ def process_single_file(src_dst):
     return 1
 
 
+def process_multi_file(job):
+    count = 0
+    for src_dst in job.files:
+        try:
+            src, dst = src_dst
+
+            if job.ascii_only:
+                pass
+            if job.detect_encoding:
+                pass
+
+            with open(src, "r", encoding="UTF-8") as rf:
+                data = rf.read()
+
+            clean = clean_text(data)
+
+            with open(dst, "w", encoding="UTF-8") as wf:
+                wf.write(clean)
+            count += 1
+        except Exception as exc:
+            logging.error("could not process %s: %r", src, exc)
+    return count
+
+
 def parallel(src_dst_list, total):
     count = cpu_count() - 1 or 1
     pool = Pool(processes=count)
     ret = 0
-    for i in tqdm.tqdm(pool.imap(process_single_file, src_dst_list), total=total):
+    for i in tqdm.tqdm(pool.imap(process_multi_file, src_dst_list), total=total):
         ret += i
     return ret
 
 
-def parse_args(args, parser):
+def parse_args(_, parser):
     parser.add_argument(
         "input",
         type=str,
@@ -62,6 +108,12 @@ def parse_args(args, parser):
         action="store_true",
         default=False,
         help="removes the output directory if exists",
+    )
+    parser.add_argument(
+        "--nproc",
+        type=int,
+        default=cpu_count() - 1,
+        help="The number of parallel processes to use",
     )
     parser.add_argument(
         "--encoding",
@@ -79,16 +131,10 @@ def local_parse_args(args):
 
 def main(args):
     # default
-    archives = list(p for p in glob(args.input) if not os.path.isdir(p))
-
-    # try with general glob
+    archives = lm.human.filepaths_from_user_input(args.input)
     if not archives:
-        archives = list(glob(os.path.join(args.input, "*.*")))
-
-    archives = list(p for p in archives if not os.path.isdir(p))
-
-    if not len(archives):
-        logging.error("no files found at location %s", args.input)
+        logging.error("no input data files found with input: %s. aborting", args.input)
+        exit(-1)
         return
 
     if os.path.exists(args.output):
@@ -103,18 +149,19 @@ def main(args):
 
     os.makedirs(args.output)
 
-    src_dst_gen = (
-        (
-            src,
-            os.path.join(
+    def job_gen(cpu_count, src_list, dst):
+        all_dst = []
+        for src in src_list:
+            dst = os.path.join(
                 args.output, os.path.splitext(os.path.basename(src))[0] + ".txt"
-            ),
-        )
-        for src in archives
-    )
+            )
+            all_dst.append((src, dst))
+
+        for chunk in chunks(all_dst, cpu_count):
+            yield CleanTextJob(chunk, ascii_only=False, detect_encoding=False)
 
     start = time.time()
-    count = parallel(src_dst_gen, total=len(archives))
+    count = parallel(job_gen(args.nproc, archives, args.output), total=len(archives))
     end = time.time()
 
     logging.info(

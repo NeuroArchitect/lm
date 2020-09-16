@@ -1,6 +1,7 @@
 import random
 
 import tensorflow as tf
+import tensorflow.compat.v1 as v1
 from absl import app, logging
 from absl.flags import argparse_flags
 
@@ -82,7 +83,7 @@ def main(args):
         ds = ds.shuffle(1024)
         ds = ds.take(args.sample_size)
 
-        it = ds.make_one_shot_iterator()
+        it = v1.data.make_one_shot_iterator(ds)
         example = it.get_next()
 
         while True:

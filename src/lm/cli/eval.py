@@ -85,7 +85,7 @@ def parse_args(args, parser=None):
     parser.add_argument(
         "runspec",
         type=str,
-        help="the json file specifiing the configuration for this run",
+        help="the json file specifying the configuration for this run",
     )  # Name of TPU to train on, if any
     parser.add_argument("--testrun", action="store_true", default=False)
     parser.add_argument(

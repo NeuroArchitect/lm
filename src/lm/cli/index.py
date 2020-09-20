@@ -2,6 +2,7 @@
 Given a directory create an index with full path to txt files
 """
 import os
+import io
 import re
 import string
 import shutil
@@ -15,15 +16,16 @@ from absl.flags import argparse_flags
 
 from tqdm import auto as tqdm
 
+from chardet.universaldetector import UniversalDetector
 
-def chunks(l, n):
+def chunks(l, n, max_size=512):
     out = []
     chunk = []
     sz = 0
     for path in l:
         chunk.append(path)
         sz += 1
-        if sz >= n:
+        if sz >= n or sz >= max_size:
             out.append(chunk)
             sz = 0
             chunk = []
@@ -35,26 +37,49 @@ def chunks(l, n):
 def process_multi_file(files):
     result = []
     excluded = []
+    detector = UniversalDetector()
     for src in files:
         try:
-            if is_text(src):
-                result.append(src)
+            ok = False
+            detector.reset()
+            with open(src, 'rb') as fd:
+                while True:
+                    s = fd.read(128)
+                    if s:
+                        detector.feed(s)
+                        if detector.done:
+                            detector.close()
+                            break
+                    if not s or len(s) < 128:
+                        break
+            p = detector.result['confidence'] 
+            if p > 0.99:
+                ok = True
             else:
-                excluded.append(src)
+                p = p_of_text(s)
+                if p > 0.60: # if less than 40% we consider it text
+                    ok = True
+            if ok:
+                result.append((src, p))
+            else:
+                excluded.append((src, p))
         except Exception as exc:
             logging.error("could not process %s: %r", src, exc)
             import traceback; traceback.print_exc() 
     return result, excluded
 
 
-def parallel(src_dst_list, total):
-    count = cpu_count() - 1 or 1
-    pool = Pool(processes=count)
+def parallel(src_dst_list, total, nproc=cpu_count() -1 or 1):
+    pool = Pool(processes=nproc)
     accepted = []
     excluded = []
-    for acc, exc in tqdm.tqdm(pool.imap(process_multi_file, src_dst_list), total=total):
+
+    pbar = tqdm.tqdm(total=total)
+
+    for acc, exc in pool.imap(process_multi_file, src_dst_list):
         accepted.extend(acc)
         excluded.extend(exc)
+        pbar.update(len(acc) + len(exc))
     return accepted, excluded
 
 
@@ -73,6 +98,14 @@ def parse_args(_, parser):
     parser.add_argument(
         "--force", action="store_true", help="Overwrite output index file",
     )
+    
+    parser.add_argument(
+        "--debug", action="store_true", help="Output the probability of being binary for each file",
+    )
+    
+    parser.add_argument(
+        "--nproc", type=int, help="number of process to use",
+    )
 
 
 def local_parse_args(args):
@@ -81,10 +114,8 @@ def local_parse_args(args):
     return parser.parse_args(args[1:])
 
 
-def is_text(filename):
-    s = open(filename, 'rb').read(512)
+def p_of_text(s):
     text_characters = list(range(32, 127)) + [ ord(c) for c in "\n\r\t\b"]
-    # null_trans = bytes.maketrans(bytearray(text_characters), bytearray(len(text_characters)))
     null_trans = bytes.maketrans(bytearray(0), bytearray(0))
     if not s:
         # Empty files are considered text
@@ -95,11 +126,10 @@ def is_text(filename):
     # Get the non-text characters (maps a character to itself then
     # use the 'remove' option to get rid of the text characters.)
     t = s.translate(null_trans, bytearray(text_characters))
+
     # If more than 30% non-text characters, then
     # this is considered a binary file
-    if float(len(t)) / float(len(s)) > 0.30:
-        return False
-    return True
+    return 1.0 - (float(len(t)) / float(len(s)))
 
 
 def main(args):
@@ -115,8 +145,13 @@ def main(args):
             lines.append(f)
 
     n = cpu_count() - 1 or 1
+    if args.nproc:
+        n = args.nproc
+
+    elements_per_chunk = len(lines)//n
+
     start = time.time()
-    accepted, excluded = parallel(chunks(lines, n), total=len(lines))
+    accepted, excluded = parallel(chunks(lines, elements_per_chunk), total=len(lines), nproc=args.nproc)
     end = time.time()
 
     if not accepted:
@@ -124,10 +159,16 @@ def main(args):
         exit(-1)
 
     with open(args.output, 'w') as fd:
-        fd.writelines(f'{l}\n' for l in accepted)
+        if args.debug:
+            fd.writelines(f'{l}\t{p}\n' for l,p in accepted)
+        else:
+            fd.writelines(f'{l}\n' for l,_ in accepted)
 
     with open(args.output + '.excluded', 'w') as fd:
-        fd.writelines(f'{l}\n' for l in excluded)
+        if args.debug:
+            fd.writelines(f'{l}\t{p}\n' for l,p in excluded)
+        else:
+            fd.writelines(f'{l}\n' for l,_ in excluded)
 
     logging.info(
         "processed {} files in {:.2f}s, {} / {} good files. accepted index is at {}. excluded index {}".format(

@@ -44,9 +44,11 @@ def run(nproc, src_dst_list, total):
     hash_files = []
     total = 0
     execute = executor(nproc)
-    for hash_file, count in tqdm.tqdm(execute(hashfile, src_dst_list), total=total,):
+    pbar = tqdm.tqdm(total=total)
+    for hash_file, count in execute(hashfile, src_dst_list):
         hash_files.append(hash_file)
         total += count
+        pbar.update(count)
     return hash_files, total
 
 
@@ -67,14 +69,14 @@ def parse_args(args, parser):
     )
 
 
-def chunks(l, n):
+def chunks(l, n, maxsize=1000):
     out = []
     chunk = []
     sz = 0
     for fpath in l:
         chunk.append(fpath)
         sz += 1
-        if sz >= n:
+        if sz >= n or sz > maxsize:
             out.append(chunk)
             sz = 0
             chunk = []
@@ -123,13 +125,15 @@ def main(args):
     )  # Assign files_per file to a tfrecord file each
 
     # start process
+    logging.info("found %d files splitted in %d chunks", len(txt_files), len(file_chunks))
+
     jobs = (
         (chunks, tempfile.NamedTemporaryFile(delete=False).name)
         for idx, chunks in enumerate(file_chunks)
     )
 
     start = time.time()
-    hash_files, count = run(nproc, jobs, total=len(file_chunks))
+    hash_files, count = run(nproc, jobs, total=len(txt_files))
     with tempfile.NamedTemporaryFile("wt", delete=True) as index:
         for s in hash_files:
             index.write("%s\n" % s)

@@ -27,14 +27,14 @@ CleanTextJob = collections.namedtuple(
 )
 
 
-def chunks(l, n):
+def chunks(l, n, maxsize=1000):
     out = []
     chunk = []
     sz = 0
     for path in l:
         chunk.append(path)
         sz += 1
-        if sz >= n:
+        if sz >= n or sz >= maxsize:
             out.append(chunk)
             sz = 0
             chunk = []
@@ -108,8 +108,10 @@ def parallel(src_dst_list, total):
     count = cpu_count() - 1 or 1
     pool = Pool(processes=count)
     ret = 0
-    for i in tqdm.tqdm(pool.imap(process_multi_file, src_dst_list), total=total):
+    pbar = tqdm.tqdm(total=total)
+    for i in pool.imap(process_multi_file, src_dst_list):
         ret += i
+        pbar.update(i)
     return ret
 
 

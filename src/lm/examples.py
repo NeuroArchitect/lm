@@ -7,13 +7,14 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.compat.v1 as v1
 
+from absl import logging
 import lm.parsers
 
 CONTENT_KEY = "content"
 TARGET_KEY = "target"
 
 PreProcessedTextLine = collections.namedtuple(
-    "PreProcessedTextLine", ["id", "content", "target", "offset_start", "offset_end"]
+    "PreProcessedTextLine", ["id", "content", "tokens", "offsets_start", "offsets_end"]
 )
 
 Seq2SeqSimpleExample = collections.namedtuple(
@@ -45,8 +46,7 @@ def read_example(example_proto) -> dict:
     return {
         "id": tf.cast(parsed_features["id"], tf.uint64),
         "content": parsed_features["content"],
-        # WARNING: remapping from target to targets
-        "targets": tf.sparse.to_dense(tf.cast(parsed_features["target"], tf.int64)),
+        "targets": tf.sparse.to_dense(tf.cast(parsed_features["targets"], tf.int64)),
         "offset_start": tf.sparse.to_dense(
             tf.cast(parsed_features["offset_start"], tf.uint64)
         ),
@@ -71,9 +71,9 @@ def create_example(features: PreProcessedTextLine) -> tf.train.Example:
     feature = {
         "id": _uint64_feature([features.id]),
         "content": _bytes_feature(features.content.encode("utf-8")),
-        "target": _uint64_feature(features.target),
-        "offset_start": _uint64_feature(features.offset_start),
-        "offset_end": _uint64_feature(features.offset_end),
+        "tokens": _uint64_feature(features.tokens),
+        "offsets_start": _uint64_feature(features.offsets_start),
+        "offsets_end": _uint64_feature(features.offsets_end),
     }
     return tf.train.Example(features=tf.train.Features(feature=feature))
 
@@ -107,15 +107,10 @@ def transform_many_and_write_one_tfrecord(job):
 
     with tf.io.TFRecordWriter(dst, options) as w:
         for source in sources:
-            for uids, sources, tokens, start_offsets, end_offsets in batch_tokenizer(
-                tokenizer, source, strategy=parse_strategy
-            ):
-                result = PreProcessedTextLine(
-                    uids, sources, tokens, start_offsets, end_offsets
-                )
+            for result in batch_tokenizer(tokenizer, source, strategy=parse_strategy):
                 example = create_example(result)
                 w.write(example.SerializeToString())
-                token_count += len(tokens)
+                token_count += len(result.tokens)
                 example_count += 1
     return token_count, example_count
 
@@ -125,7 +120,14 @@ def batch_tokenizer(tokenizer, txtfile_location, strategy="file"):
     sources = lm.parsers.parse_url(txtfile_location, strategy=strategy)
     if len(sources) == 0:
         return
-    uids = [farmhash.fingerprint64(source) for source in sources]
+    clean_sources = []
+    for idx, src in enumerate(sources):
+        if '\0' in src:
+            logging.warning('found null character at index %d:%r in resource %r', idx, src, txtfile_location)
+            continue
+        clean_sources.append(src)
+
+    uids = [farmhash.fingerprint64(source) for source in clean_sources]
     batches = tokenizer.batch_encode_plus(
         sources,
         return_token_type_ids=True,
@@ -136,13 +138,14 @@ def batch_tokenizer(tokenizer, txtfile_location, strategy="file"):
         verbose=False,
     )
 
-    yield from zip(
-        uids,
-        sources,
-        batches["input_ids"],
-        [[start for start, end in offsets] for offsets in batches["offset_mapping"]],
-        [[end for start, end in offsets] for offsets in batches["offset_mapping"]],
-    )
+    for uid, src, tokens, start, end in zip(
+            uids,
+            sources,
+            batches["input_ids"],
+            [[start for start, end in offsets] for offsets in batches["offset_mapping"]],
+            [[end for start, end in offsets] for offsets in batches["offset_mapping"]],
+        ):
+        yield PreProcessedTextLine(uid, content=src, tokens=tokens, offsets_start=start, offsets_end=end)
 
 
 def _int64_list_feature(int_list):

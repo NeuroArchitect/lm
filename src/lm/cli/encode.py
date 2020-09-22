@@ -1,3 +1,4 @@
+import sys
 import os
 import time
 from multiprocessing import Pool, cpu_count
@@ -14,14 +15,14 @@ import lm.human
 
 
 # Helper functions and classes
-def sizechunks(l, n):
+def sizechunks(l, n, max_files=4096):
     out = []
     chunk = []
     sz = 0
     for fpath in l:
         chunk.append(fpath)
         sz += tf.io.gfile.stat(fpath).length
-        if sz >= n:
+        if sz >= n or len(chunk) > max_files:
             out.append(chunk)
             sz = 0
             chunk = []

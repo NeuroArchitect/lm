@@ -59,7 +59,7 @@ def parse_args(args, parser):
         help="path to: 1) a directory, 2) an index file with one file path per line.",
     )
     parser.add_argument(
-        "output", type=str, default="output", help="Where to write tfrecords"
+        "output", type=str, default="output", help="output file or directory to write the hashsorted index"
     )
     parser.add_argument(
         "--nproc",

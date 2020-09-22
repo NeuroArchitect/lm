@@ -38,20 +38,20 @@ def read_example(example_proto) -> dict:
     features = {
         "id": tf.io.VarLenFeature(tf.int64),
         "content": tf.io.FixedLenFeature([], tf.string),
-        "target": tf.io.VarLenFeature(tf.int64),
-        "offset_start": tf.io.VarLenFeature(tf.int64),
-        "offset_end": tf.io.VarLenFeature(tf.int64),
+        "tokens": tf.io.VarLenFeature(tf.int64),
+        "offsets_start": tf.io.VarLenFeature(tf.int64),
+        "offsets_end": tf.io.VarLenFeature(tf.int64),
     }
     parsed_features = tf.io.parse_single_example(example_proto, features)
     return {
         "id": tf.cast(parsed_features["id"], tf.uint64),
         "content": parsed_features["content"],
-        "targets": tf.sparse.to_dense(tf.cast(parsed_features["targets"], tf.int64)),
-        "offset_start": tf.sparse.to_dense(
-            tf.cast(parsed_features["offset_start"], tf.uint64)
+        "tokens": tf.sparse.to_dense(tf.cast(parsed_features["tokens"], tf.int64)),
+        "offsets_start": tf.sparse.to_dense(
+            tf.cast(parsed_features["offsets_start"], tf.uint64)
         ),
-        "offset_end": tf.sparse.to_dense(
-            tf.cast(parsed_features["offset_end"], tf.uint64)
+        "offsets_end": tf.sparse.to_dense(
+            tf.cast(parsed_features["offsets_end"], tf.uint64)
         ),
     }
 
@@ -206,8 +206,19 @@ def from_file_list(file_list):
     if has_any_gz and not has_all_gz:
         raise ValueError("invalid mix of gz and non gz records")
     if has_all_gz:
+        logging.info('GZIP compression scheme detected')
         return lambda *args, **kwds: tf.data.TFRecordDataset(
             *args, **kwds, compression_type="GZIP", buffer_size=None
+        )
+    
+    has_any_lz = any(f.endswith("lz") for f in file_list)
+    has_all_lz = all(f.endswith("lz") for f in file_list)
+    if has_any_gz and not has_all_gz:
+        raise ValueError("invalid mix of lz and non lz records")
+    if has_all_lz:
+        logging.info('ZLIB compression scheme detected')
+        return lambda *args, **kwds: tf.data.TFRecordDataset(
+            *args, **kwds, compression_type="ZLIB", buffer_size=None
         )
 
     return tf.data.TFRecordDataset

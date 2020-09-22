@@ -1,3 +1,4 @@
+"""Main LM command line"""
 import importlib
 import random
 import warnings
@@ -11,7 +12,6 @@ import numpy as np
 from absl import app
 from absl.flags import argparse_flags
 
-"""Main LM command line"""
 
 SUBCOMMANDS = {}
 
@@ -58,7 +58,6 @@ def main(args):
     if cmd is None:
         app.usage(shorthelp=True, exitcode=-1)
         return
-        # raise ValueError('invalid command %s', args.subparser)
     return cmd.main(args)
 
 

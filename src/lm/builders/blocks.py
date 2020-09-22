@@ -44,4 +44,3 @@ class TransformerBlockBuilder:
         with tf.variable_scope(name):
             x = x + self.add_layer_norm(self.multi_head_attention(x))
             x = x + self.add_layer_norm(self.add_feed_forward(x))
-            return

@@ -4,7 +4,7 @@ vocab conventions
 
 PAD = "[PAD]"
 # End Of Sentence
-EOS = "[EOS]"
+EOS = "<|endoftext|>"
 PAD_ = 0
 EOS_ = 1
 

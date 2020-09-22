@@ -7,6 +7,7 @@ import re
 import string
 import shutil
 import time
+import functools
 import collections
 from glob import glob
 from multiprocessing import Pool, cpu_count
@@ -34,11 +35,17 @@ def chunks(l, n, max_size=512):
     return out
 
 
-def process_multi_file(files):
+def binary_check():
+    pass
+
+def process_multi_file(files, binary_check:bool=True):
     result = []
     excluded = []
     detector = UniversalDetector()
     for src in files:
+        if binary_check is False:
+            result.append( (src, 1.0) )
+            continue
         try:
             ok = False
             detector.reset()
@@ -69,14 +76,14 @@ def process_multi_file(files):
     return result, excluded
 
 
-def parallel(src_dst_list, total, nproc=cpu_count() -1 or 1):
+def parallel(src_dst_list, total, nproc=cpu_count() -1 or 1, binary_check=True):
     pool = Pool(processes=nproc)
     accepted = []
     excluded = []
 
     pbar = tqdm.tqdm(total=total)
 
-    for acc, exc in pool.imap(process_multi_file, src_dst_list):
+    for acc, exc in pool.imap(functools.partial(process_multi_file, binary_check=binary_check), src_dst_list):
         accepted.extend(acc)
         excluded.extend(exc)
         pbar.update(len(acc) + len(exc))
@@ -97,6 +104,10 @@ def parse_args(_, parser):
 
     parser.add_argument(
         "--force", action="store_true", help="Overwrite output index file",
+    )
+    
+    parser.add_argument(
+        "--no_binary_check", default=False, action="store_true", help="Check if the file is a binary or text file. excludes binary files",
     )
     
     parser.add_argument(
@@ -151,7 +162,7 @@ def main(args):
     elements_per_chunk = len(lines)//n
 
     start = time.time()
-    accepted, excluded = parallel(chunks(lines, elements_per_chunk), total=len(lines), nproc=args.nproc)
+    accepted, excluded = parallel(chunks(lines, elements_per_chunk), total=len(lines), nproc=args.nproc, binary_check=not args.no_binary_check)
     end = time.time()
 
     if not accepted:

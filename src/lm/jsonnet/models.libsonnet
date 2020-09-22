@@ -44,6 +44,12 @@
         //     attn_dropout: 0.1,
         //     res_dropout:0.1,
         // },
-    }
+    },
 
+    Transfomer(n_tokens, n_ctx, n_heads, n_layers=8) :: {
+        kind="lm.models.StackedTransfomer",
+        layers=[
+            PositionalEmbeddings(n_tokens, n_ctx),
+        ] + [ MultiHeadTransfomer(n_ctx, n_io, n_heads, name="layer_"+l) for l in std.range(n_layers) ]
+    }
 }

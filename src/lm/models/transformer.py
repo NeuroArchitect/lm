@@ -1,4 +1,5 @@
 "this model configures the base mesh transformer for lm"
+from tensorflow.compat import v1
 # from enum import Enum
 # from typing import Callable, List, Optional
 
@@ -73,3 +74,38 @@
 #             init_checkpoint=init_checkpoint,
 #             mesh_devices=mesh_devices,
 #         )
+
+
+from pydantic.datasclasses import dataclass
+from lm.infeeds import InfeedConfig
+from lm.builders.transformer import TransformerBuilder
+
+class ModelConfig(BaseModel):
+    n_layer: int
+    encoder: Dict 
+    transfomer: Dict
+
+
+@lm.register_model("transformer")
+class ModelBuilder:
+    def __init__(self, config: ModelConfig):
+        self.config = config
+
+        self.add_input = InfeedBuilder(config.input_config)
+        self.transfomer_builder = TransformerBuilder(
+            self.config.transfomer
+        )
+
+    def add_encoder(self, x):
+        return self.positional_encoder(x)
+
+    def add_transformer(self, x):
+        return self.transfomer_builder(x)
+
+    def __call__(self, inputs, params):
+        tokens = inputs["tokens"]
+        x = self.add_input(tokens)
+        for l in range(self.config.n_layer):
+            with v1.variable_scope(f"layer_{l}"):
+                x = self.add_transformer(x)
+        return x

@@ -21,7 +21,6 @@ def parse_args(args, parser=None):
 
 
 def main(args):
-    print('here', args.training_type)
     cmd = SUBCOMMANDS.get(args.training_type, None)
     if cmd is None:
         app.usage(shorthelp=True, exitcode=-1)

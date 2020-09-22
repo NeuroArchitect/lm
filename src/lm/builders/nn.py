@@ -49,3 +49,4 @@ def layer_norm(
                 activation_dtype=x.dtype,
             )
         return x
+
